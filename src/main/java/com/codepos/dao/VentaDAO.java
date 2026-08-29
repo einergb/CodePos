@@ -39,11 +39,8 @@ public class VentaDAO {
         """;
 
         try (
-                Connection conexion =
-                        ConexionBD.conectar();
-
-                PreparedStatement ps =
-                        conexion.prepareStatement(sql)
+                Connection conexion = ConexionBD.conectar();
+                PreparedStatement ps = conexion.prepareStatement(sql)
         ) {
 
             ps.setLong(1, empresaId);
@@ -95,15 +92,11 @@ public class VentaDAO {
         ORDER BY id
         """;
 
-        List<Venta> ventas =
-                new ArrayList<>();
+        List<Venta> ventas = new ArrayList<>();
 
         try (
-                Connection conexion =
-                        ConexionBD.conectar();
-
-                PreparedStatement ps =
-                        conexion.prepareStatement(sql)
+                Connection conexion = ConexionBD.conectar();
+                PreparedStatement ps = conexion.prepareStatement(sql)
         ) {
 
             ps.setLong(1, empresaId);
@@ -130,12 +123,53 @@ public class VentaDAO {
     }
 
     /**
-     * Crea una nueva venta.
+     * Crea una venta utilizando una conexión propia.
      *
-     * La fecha no se envía desde Java.
-     * PostgreSQL utiliza DEFAULT CURRENT_TIMESTAMP.
+     * Este método mantiene compatibilidad con:
+     *
+     * - VentaService
+     * - TestVentaDAO
+     * - Otros servicios que creen una venta individualmente
+     *
+     * La transacción integral utilizará el método
+     * crear(Connection, Venta).
      */
     public Long crear(Venta venta) {
+
+        try (Connection conexion = ConexionBD.conectar()) {
+
+            return crear(
+                    conexion,
+                    venta
+            );
+
+        } catch (SQLException e) {
+
+            throw new RuntimeException(
+                    "Error al crear venta",
+                    e
+            );
+        }
+    }
+
+    /**
+     * Crea una venta utilizando una conexión existente.
+     *
+     * Este método está diseñado para operaciones
+     * transaccionales donde varias operaciones DAO
+     * deben utilizar la misma conexión.
+     *
+     * IMPORTANTE:
+     *
+     * Este método NO abre ni cierra la conexión.
+     * Tampoco realiza commit ni rollback.
+     *
+     * La conexión y la transacción son responsabilidad
+     * del servicio que invoca este método.
+     */
+    public Long crear(
+            Connection conexion,
+            Venta venta) {
 
         String sql = """
         INSERT INTO ventas (
@@ -158,9 +192,6 @@ public class VentaDAO {
         """;
 
         try (
-                Connection conexion =
-                        ConexionBD.conectar();
-
                 PreparedStatement ps =
                         conexion.prepareStatement(sql)
         ) {
@@ -266,7 +297,7 @@ public class VentaDAO {
 
                 if (rs.next()) {
 
-                    return rs.getLong(1);
+                    return rs.getLong("id");
                 }
             }
 
@@ -377,5 +408,4 @@ public class VentaDAO {
 
         return venta;
     }
-
 }

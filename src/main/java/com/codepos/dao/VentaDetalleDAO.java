@@ -31,9 +31,7 @@ public class VentaDetalleDAO {
             """;
 
         try (
-                Connection conexion =
-                        ConexionBD.conectar();
-
+                Connection conexion = ConexionBD.conectar();
                 PreparedStatement ps =
                         conexion.prepareStatement(sql)
         ) {
@@ -85,9 +83,7 @@ public class VentaDetalleDAO {
                 new ArrayList<>();
 
         try (
-                Connection conexion =
-                        ConexionBD.conectar();
-
+                Connection conexion = ConexionBD.conectar();
                 PreparedStatement ps =
                         conexion.prepareStatement(sql)
         ) {
@@ -116,13 +112,47 @@ public class VentaDetalleDAO {
     }
 
     /**
-     * Crea un nuevo detalle de venta.
+     * Crea un detalle utilizando una conexión propia.
      *
-     * created_at no se incluye en el INSERT
-     * porque PostgreSQL lo genera mediante
-     * DEFAULT CURRENT_TIMESTAMP.
+     * Mantiene compatibilidad con los tests y servicios
+     * que crean un detalle de forma independiente.
      */
     public Long crear(VentaDetalle detalle) {
+
+        try (Connection conexion = ConexionBD.conectar()) {
+
+            return crear(
+                    conexion,
+                    detalle
+            );
+
+        } catch (SQLException e) {
+
+            throw new RuntimeException(
+                    "Error al crear detalle de venta",
+                    e
+            );
+        }
+    }
+
+    /**
+     * Crea un detalle utilizando una conexión existente.
+     *
+     * Este método se utiliza dentro de una transacción
+     * integral de venta.
+     *
+     * IMPORTANTE:
+     *
+     * No abre la conexión.
+     * No cierra la conexión.
+     * No realiza commit.
+     * No realiza rollback.
+     *
+     * La transacción pertenece al Service.
+     */
+    public Long crear(
+            Connection conexion,
+            VentaDetalle detalle) {
 
         String sql = """
             INSERT INTO venta_detalles (
@@ -141,9 +171,6 @@ public class VentaDetalleDAO {
             """;
 
         try (
-                Connection conexion =
-                        ConexionBD.conectar();
-
                 PreparedStatement ps =
                         conexion.prepareStatement(sql)
         ) {
@@ -255,6 +282,4 @@ public class VentaDetalleDAO {
 
         return detalle;
     }
-
-
 }

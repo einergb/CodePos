@@ -47,6 +47,7 @@ public class PagoDAO {
             }
 
         } catch (SQLException e) {
+
             throw new RuntimeException(
                     "Error al buscar pago",
                     e
@@ -76,7 +77,8 @@ public class PagoDAO {
                 ORDER BY id
                 """;
 
-        List<Pago> pagos = new ArrayList<>();
+        List<Pago> pagos =
+                new ArrayList<>();
 
         try (
                 Connection connection =
@@ -100,6 +102,7 @@ public class PagoDAO {
             }
 
         } catch (SQLException e) {
+
             throw new RuntimeException(
                     "Error al listar pagos de la venta",
                     e
@@ -110,9 +113,53 @@ public class PagoDAO {
     }
 
     /**
-     * Registra un nuevo pago.
+     * Registra un nuevo pago utilizando
+     * una conexión propia.
+     *
+     * Mantiene compatibilidad con los tests
+     * y servicios existentes.
      */
     public Long crear(Pago pago) {
+
+        try (
+                Connection connection =
+                        ConexionBD.conectar()
+        ) {
+
+            return crear(
+                    connection,
+                    pago
+            );
+
+        } catch (SQLException e) {
+
+            throw new RuntimeException(
+                    "Error al crear pago",
+                    e
+            );
+        }
+    }
+
+    /**
+     * Registra un nuevo pago utilizando
+     * una conexión existente.
+     *
+     * Este método está diseñado para utilizarse
+     * dentro de una transacción integral.
+     *
+     * IMPORTANTE:
+     *
+     * No abre la conexión.
+     * No cierra la conexión.
+     * No realiza commit.
+     * No realiza rollback.
+     *
+     * La transacción es responsabilidad
+     * del Service.
+     */
+    public Long crear(
+            Connection connection,
+            Pago pago) {
 
         String sql = """
                 INSERT INTO pagos (
@@ -127,9 +174,6 @@ public class PagoDAO {
                 """;
 
         try (
-                Connection connection =
-                        ConexionBD.conectar();
-
                 PreparedStatement statement =
                         connection.prepareStatement(sql)
         ) {
@@ -139,34 +183,44 @@ public class PagoDAO {
                     pago.getVentaId()
             );
 
+            // Usuario autenticado opcional
             if (pago.getAuthUserId() != null) {
+
                 statement.setInt(
                         2,
                         pago.getAuthUserId()
                 );
+
             } else {
+
                 statement.setNull(
                         2,
                         Types.INTEGER
                 );
             }
 
+            // Método de pago
             statement.setString(
                     3,
                     pago.getMetodo()
             );
 
+            // Monto
             statement.setBigDecimal(
                     4,
                     pago.getMonto()
             );
 
+            // Referencia opcional
             if (pago.getReferencia() != null) {
+
                 statement.setString(
                         5,
                         pago.getReferencia()
                 );
+
             } else {
+
                 statement.setNull(
                         5,
                         Types.VARCHAR
@@ -177,11 +231,13 @@ public class PagoDAO {
                          statement.executeQuery()) {
 
                 if (rs.next()) {
+
                     return rs.getLong("id");
                 }
             }
 
         } catch (SQLException e) {
+
             throw new RuntimeException(
                     "Error al crear pago",
                     e
@@ -197,7 +253,8 @@ public class PagoDAO {
      * Convierte un ResultSet en un objeto Pago.
      */
     private Pago mapearPago(
-            ResultSet rs) throws SQLException {
+            ResultSet rs)
+            throws SQLException {
 
         Pago pago = new Pago();
 
@@ -213,7 +270,10 @@ public class PagoDAO {
                 rs.getInt("auth_user_id");
 
         if (!rs.wasNull()) {
-            pago.setAuthUserId(authUserId);
+
+            pago.setAuthUserId(
+                    authUserId
+            );
         }
 
         pago.setMetodo(
@@ -232,6 +292,7 @@ public class PagoDAO {
                 rs.getTimestamp("fecha");
 
         if (fecha != null) {
+
             pago.setFecha(
                     fecha.toInstant()
                             .atOffset(
@@ -244,6 +305,7 @@ public class PagoDAO {
                 rs.getTimestamp("created_at");
 
         if (createdAt != null) {
+
             pago.setCreatedAt(
                     createdAt.toInstant()
                             .atOffset(
