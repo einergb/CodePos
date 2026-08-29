@@ -1,0 +1,16 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="test-pago-service" type="Application" factoryName="Application">
+    <envs>
+      <env name="DB_HOST" value="192.168.0.150" />
+      <env name="DB_NAME" value="codepos" />
+      <env name="DB_PASSWORD" value="1111746392codepos" />
+      <env name="DB_PORT" value="5433" />
+      <env name="DB_USER" value="codepos" />
+    </envs>
+    <option name="MAIN_CLASS_NAME" value="com.codepos.TestPagoService" />
+    <module name="codepos" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
