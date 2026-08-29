@@ -19,7 +19,10 @@ public class PagoService {
      */
     public Pago buscarPorId(Long pagoId) {
 
-        validarId(pagoId, "El ID del pago es obligatorio");
+        validarId(
+                pagoId,
+                "El ID del pago es obligatorio"
+        );
 
         return pagoDAO.buscarPorId(pagoId);
     }

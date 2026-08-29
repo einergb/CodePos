@@ -1,53 +1,50 @@
 package com.codepos;
 
-import com.codepos.dao.ClienteDAO;
 import com.codepos.model.Cliente;
+import com.codepos.service.ClienteService;
 
 import java.util.List;
 
-public class TestClienteDAO {
+public class TestClienteService {
 
     public static void main(String[] args) {
 
-        ClienteDAO clienteDAO = new ClienteDAO();
+        ClienteService clienteService =
+                new ClienteService();
 
         System.out.println("=================================");
-        System.out.println("       TEST CLIENTE DAO");
+        System.out.println("    TEST CLIENTE SERVICE");
         System.out.println("=================================");
 
         // =========================================
-        // 1. BUSCAR CLIENTE
+        // 1. CONSULTAR CLIENTE
         // =========================================
 
         System.out.println();
-        System.out.println("1. Buscando cliente...");
+        System.out.println("1. Consultando cliente...");
 
         Cliente cliente =
-                clienteDAO.buscarPorId(1L, 1L);
+                clienteService.buscarPorId(1L, 1L);
 
         if (cliente != null) {
 
-            System.out.println("✅ Cliente encontrado");
-            System.out.println("ID: " + cliente.getId());
             System.out.println(
-                    "Empresa: " + cliente.getEmpresaId()
+                    "✅ Cliente encontrado"
             );
+
+            System.out.println(
+                    "ID: " + cliente.getId()
+            );
+
             System.out.println(
                     "Nombre: " + cliente.getNombre()
             );
+
             System.out.println(
                     "Identificación: "
                             + cliente.getIdentificacion()
             );
-            System.out.println(
-                    "Teléfono: " + cliente.getTelefono()
-            );
-            System.out.println(
-                    "Correo: " + cliente.getCorreo()
-            );
-            System.out.println(
-                    "Dirección: " + cliente.getDireccion()
-            );
+
             System.out.println(
                     "Activo: " + cliente.getActivo()
             );
@@ -69,11 +66,10 @@ public class TestClienteDAO {
         );
 
         List<Cliente> clientes =
-                clienteDAO.listarPorEmpresa(1L);
+                clienteService.listarPorEmpresa(1L);
 
         System.out.println(
-                "Total encontrados: "
-                        + clientes.size()
+                "Total: " + clientes.size()
         );
 
         for (Cliente c : clientes) {
@@ -90,12 +86,12 @@ public class TestClienteDAO {
         }
 
         // =========================================
-        // 3. CREAR CLIENTE
+        // 3. CREAR CLIENTE COMPLETO
         // =========================================
 
         System.out.println();
         System.out.println(
-                "3. Creando cliente de prueba..."
+                "3. Creando cliente completo..."
         );
 
         Cliente nuevoCliente =
@@ -104,21 +100,21 @@ public class TestClienteDAO {
         nuevoCliente.setEmpresaId(1L);
 
         nuevoCliente.setNombre(
-                "Cliente Test CodePOS "
+                "Cliente Service Test "
                         + System.currentTimeMillis()
         );
 
         nuevoCliente.setIdentificacion(
-                "TEST-CLIENTE-"
+                "SERVICE-CLIENTE-"
                         + System.currentTimeMillis()
         );
 
         nuevoCliente.setTelefono(
-                "3000000000"
+                "3011234567"
         );
 
         nuevoCliente.setCorreo(
-                "cliente.test@codepos.com"
+                "service.cliente@codepos.com"
         );
 
         nuevoCliente.setDireccion(
@@ -126,7 +122,9 @@ public class TestClienteDAO {
         );
 
         Long idGenerado =
-                clienteDAO.crear(nuevoCliente);
+                clienteService.crear(
+                        nuevoCliente
+                );
 
         System.out.println(
                 "✅ Cliente creado"
@@ -137,11 +135,86 @@ public class TestClienteDAO {
                         + idGenerado
         );
 
+        // =========================================
+        // 4. CREAR CLIENTE MOSTRADOR
+        // =========================================
+
+        System.out.println();
+        System.out.println(
+                "4. Creando cliente mostrador..."
+        );
+
+        Cliente clienteMostrador =
+                new Cliente();
+
+        clienteMostrador.setEmpresaId(1L);
+
+        clienteMostrador.setNombre(
+                "Cliente Mostrador Test "
+                        + System.currentTimeMillis()
+        );
+
+        /*
+         * Los demás datos quedan NULL
+         * porque son opcionales.
+         */
+
+        Long idMostrador =
+                clienteService.crear(
+                        clienteMostrador
+                );
+
+        System.out.println(
+                "✅ Cliente mostrador creado"
+        );
+
+        System.out.println(
+                "ID generado: "
+                        + idMostrador
+        );
+
+        // =========================================
+        // 5. VALIDACIÓN
+        // =========================================
+
+        System.out.println();
+        System.out.println(
+                "5. Probando validación..."
+        );
+
+        try {
+
+            Cliente clienteInvalido =
+                    new Cliente();
+
+            clienteInvalido.setEmpresaId(1L);
+
+            clienteInvalido.setNombre("");
+
+            clienteService.crear(
+                    clienteInvalido
+            );
+
+            System.out.println(
+                    "❌ ERROR: la validación no funcionó"
+            );
+
+        } catch (IllegalArgumentException e) {
+
+            System.out.println(
+                    "✅ Validación funcionando"
+            );
+
+            System.out.println(
+                    "Mensaje: "
+                            + e.getMessage()
+            );
+        }
+
         System.out.println();
         System.out.println("=================================");
         System.out.println("       PRUEBA FINALIZADA");
         System.out.println("=================================");
     }
-
 
 }

@@ -1,0 +1,381 @@
+package com.codepos.dao;
+
+import com.codepos.config.ConexionBD;
+import com.codepos.model.Venta;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class VentaDAO {
+
+    /**
+     * Busca una venta por empresa e ID.
+     */
+    public Venta buscarPorId(
+            Long empresaId,
+            Long ventaId) {
+
+        String sql = """
+        SELECT
+            id,
+            empresa_id,
+            sucursal_id,
+            cliente_id,
+            auth_user_id,
+            numero,
+            fecha,
+            estado,
+            subtotal,
+            descuento,
+            impuesto,
+            total,
+            observaciones,
+            created_at,
+            updated_at
+        FROM ventas
+        WHERE empresa_id = ?
+          AND id = ?
+        """;
+
+        try (
+                Connection conexion =
+                        ConexionBD.conectar();
+
+                PreparedStatement ps =
+                        conexion.prepareStatement(sql)
+        ) {
+
+            ps.setLong(1, empresaId);
+            ps.setLong(2, ventaId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+
+                if (rs.next()) {
+                    return mapearVenta(rs);
+                }
+            }
+
+        } catch (SQLException e) {
+
+            throw new RuntimeException(
+                    "Error al buscar venta",
+                    e
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * Lista las ventas de una empresa.
+     */
+    public List<Venta> listarPorEmpresa(
+            Long empresaId) {
+
+        String sql = """
+        SELECT
+            id,
+            empresa_id,
+            sucursal_id,
+            cliente_id,
+            auth_user_id,
+            numero,
+            fecha,
+            estado,
+            subtotal,
+            descuento,
+            impuesto,
+            total,
+            observaciones,
+            created_at,
+            updated_at
+        FROM ventas
+        WHERE empresa_id = ?
+        ORDER BY id
+        """;
+
+        List<Venta> ventas =
+                new ArrayList<>();
+
+        try (
+                Connection conexion =
+                        ConexionBD.conectar();
+
+                PreparedStatement ps =
+                        conexion.prepareStatement(sql)
+        ) {
+
+            ps.setLong(1, empresaId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+
+                while (rs.next()) {
+
+                    ventas.add(
+                            mapearVenta(rs)
+                    );
+                }
+            }
+
+        } catch (SQLException e) {
+
+            throw new RuntimeException(
+                    "Error al listar ventas",
+                    e
+            );
+        }
+
+        return ventas;
+    }
+
+    /**
+     * Crea una nueva venta.
+     *
+     * La fecha no se envía desde Java.
+     * PostgreSQL utiliza DEFAULT CURRENT_TIMESTAMP.
+     */
+    public Long crear(Venta venta) {
+
+        String sql = """
+        INSERT INTO ventas (
+            empresa_id,
+            sucursal_id,
+            cliente_id,
+            auth_user_id,
+            numero,
+            estado,
+            subtotal,
+            descuento,
+            impuesto,
+            total,
+            observaciones
+        )
+        VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+        RETURNING id
+        """;
+
+        try (
+                Connection conexion =
+                        ConexionBD.conectar();
+
+                PreparedStatement ps =
+                        conexion.prepareStatement(sql)
+        ) {
+
+            // Empresa
+            ps.setLong(
+                    1,
+                    venta.getEmpresaId()
+            );
+
+            // Sucursal
+            ps.setLong(
+                    2,
+                    venta.getSucursalId()
+            );
+
+            // Cliente opcional
+            if (venta.getClienteId() != null) {
+
+                ps.setLong(
+                        3,
+                        venta.getClienteId()
+                );
+
+            } else {
+
+                ps.setNull(
+                        3,
+                        Types.BIGINT
+                );
+            }
+
+            // Usuario autenticado opcional
+            if (venta.getAuthUserId() != null) {
+
+                ps.setInt(
+                        4,
+                        venta.getAuthUserId()
+                );
+
+            } else {
+
+                ps.setNull(
+                        4,
+                        Types.INTEGER
+                );
+            }
+
+            // Número
+            ps.setString(
+                    5,
+                    venta.getNumero()
+            );
+
+            // Estado
+            ps.setString(
+                    6,
+                    venta.getEstado()
+            );
+
+            // Subtotal
+            ps.setBigDecimal(
+                    7,
+                    venta.getSubtotal()
+            );
+
+            // Descuento
+            ps.setBigDecimal(
+                    8,
+                    venta.getDescuento()
+            );
+
+            // Impuesto
+            ps.setBigDecimal(
+                    9,
+                    venta.getImpuesto()
+            );
+
+            // Total
+            ps.setBigDecimal(
+                    10,
+                    venta.getTotal()
+            );
+
+            // Observaciones opcionales
+            if (venta.getObservaciones() != null) {
+
+                ps.setString(
+                        11,
+                        venta.getObservaciones()
+                );
+
+            } else {
+
+                ps.setNull(
+                        11,
+                        Types.VARCHAR
+                );
+            }
+
+            try (ResultSet rs =
+                         ps.executeQuery()) {
+
+                if (rs.next()) {
+
+                    return rs.getLong(1);
+                }
+            }
+
+        } catch (SQLException e) {
+
+            throw new RuntimeException(
+                    "Error al crear venta",
+                    e
+            );
+        }
+
+        throw new RuntimeException(
+                "No se pudo obtener el ID de la venta creada"
+        );
+    }
+
+    /**
+     * Convierte un ResultSet en un objeto Venta.
+     */
+    private Venta mapearVenta(
+            ResultSet rs)
+            throws SQLException {
+
+        Venta venta = new Venta();
+
+        venta.setId(
+                rs.getLong("id")
+        );
+
+        venta.setEmpresaId(
+                rs.getLong("empresa_id")
+        );
+
+        venta.setSucursalId(
+                rs.getLong("sucursal_id")
+        );
+
+        // Cliente opcional
+        long clienteId =
+                rs.getLong("cliente_id");
+
+        if (!rs.wasNull()) {
+
+            venta.setClienteId(
+                    clienteId
+            );
+        }
+
+        // Usuario autenticado opcional
+        int authUserId =
+                rs.getInt("auth_user_id");
+
+        if (!rs.wasNull()) {
+
+            venta.setAuthUserId(
+                    authUserId
+            );
+        }
+
+        venta.setNumero(
+                rs.getString("numero")
+        );
+
+        venta.setFecha(
+                rs.getObject(
+                        "fecha",
+                        java.time.OffsetDateTime.class
+                )
+        );
+
+        venta.setEstado(
+                rs.getString("estado")
+        );
+
+        venta.setSubtotal(
+                rs.getBigDecimal("subtotal")
+        );
+
+        venta.setDescuento(
+                rs.getBigDecimal("descuento")
+        );
+
+        venta.setImpuesto(
+                rs.getBigDecimal("impuesto")
+        );
+
+        venta.setTotal(
+                rs.getBigDecimal("total")
+        );
+
+        venta.setObservaciones(
+                rs.getString("observaciones")
+        );
+
+        venta.setCreatedAt(
+                rs.getObject(
+                        "created_at",
+                        java.time.OffsetDateTime.class
+                )
+        );
+
+        venta.setUpdatedAt(
+                rs.getObject(
+                        "updated_at",
+                        java.time.OffsetDateTime.class
+                )
+        );
+
+        return venta;
+    }
+
+}
