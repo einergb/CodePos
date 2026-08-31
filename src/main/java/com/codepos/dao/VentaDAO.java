@@ -408,4 +408,44 @@ public class VentaDAO {
 
         return venta;
     }
+    public void marcarComoPagada(
+            Connection connection,
+            Long empresaId,
+            Long ventaId) {
+
+        String sql = """
+            UPDATE ventas
+            SET estado = 'PAGADA',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE empresa_id = ?
+              AND id = ?
+              AND estado = 'REGISTRADA'
+            """;
+
+        try (
+                PreparedStatement statement =
+                        connection.prepareStatement(sql)
+        ) {
+
+            statement.setLong(1, empresaId);
+            statement.setLong(2, ventaId);
+
+            int filas =
+                    statement.executeUpdate();
+
+            if (filas != 1) {
+
+                throw new RuntimeException(
+                        "La venta no existe, no pertenece a la empresa o no está en estado REGISTRADA"
+                );
+            }
+
+        } catch (SQLException e) {
+
+            throw new RuntimeException(
+                    "Error al marcar la venta como PAGADA",
+                    e
+            );
+        }
+    }
 }

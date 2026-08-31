@@ -2,11 +2,12 @@
 package com.codepos.dao;
 
 import com.codepos.config.ConexionBD;
+import com.codepos.model.MovimientoInventario;
 
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.math.BigDecimal;
-import java.sql.CallableStatement;
-import java.sql.Connection;
-import java.sql.Types;
 
 public class MovimientoInventarioDAO {
 
@@ -229,5 +230,6 @@ public class MovimientoInventarioDAO {
                 "PostgreSQL no devolvió el ID del movimiento"
         );
     }
+
 }
 
