@@ -6,15 +6,48 @@ import com.codepos.dao.MovimientoInventarioDAO;
 import com.codepos.dao.PagoDAO;
 import com.codepos.dao.VentaDAO;
 import com.codepos.dao.VentaDetalleDAO;
+import com.codepos.dto.ResultadoVenta;
 import com.codepos.model.Inventario;
 import com.codepos.model.Pago;
 import com.codepos.model.Venta;
 import com.codepos.model.VentaDetalle;
+import com.codepos.util.CalculadoraVentaUtil;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
+/**
+
+ * ============================================================
+ * VENTA INTEGRAL SERVICE
+ * ============================================================
+ *
+ * Servicio principal para registrar una venta completa.
+ *
+ * Responsabilidades:
+ *
+ * 1. Validar datos de entrada.
+ * 2. Calcular los valores monetarios.
+ * 3. Validar el pago.
+ * 4. Abrir una transacción.
+ * 5. Bloquear y validar inventario.
+ * 6. Crear la venta.
+ * 7. Crear los detalles.
+ * 8. Registrar movimientos de inventario.
+ * 9. Registrar el pago.
+ * 10. Marcar la venta como PAGADA.
+ * 11. Confirmar mediante COMMIT.
+ *
+ * Si cualquier operación falla:
+ *
+ * ROLLBACK.
+ *
+ * La transacción completa es responsabilidad
+ * exclusiva de este Service.
+ */
 public class VentaIntegralService {
 
     private final VentaDAO ventaDAO;
@@ -23,33 +56,40 @@ public class VentaIntegralService {
     private final MovimientoInventarioDAO movimientoDAO;
     private final PagoDAO pagoDAO;
 
+    /**
+
+     * Constructor.
+     */
     public VentaIntegralService() {
 
-        this.ventaDAO = new VentaDAO();
-        this.ventaDetalleDAO = new VentaDetalleDAO();
-        this.inventarioDAO = new InventarioDAO();
-        this.movimientoDAO = new MovimientoInventarioDAO();
-        this.pagoDAO = new PagoDAO();
+        this.ventaDAO =
+                new VentaDAO();
+
+        this.ventaDetalleDAO =
+                new VentaDetalleDAO();
+
+        this.inventarioDAO =
+                new InventarioDAO();
+
+        this.movimientoDAO =
+                new MovimientoInventarioDAO();
+
+        this.pagoDAO =
+                new PagoDAO();
     }
 
     /**
-     * Registra una venta completa dentro de una
-     * única transacción PostgreSQL.
+
+     * =========================================================
+     * REGISTRAR VENTA INTEGRAL
+     * =========================================================
      *
-     * La operación incluye:
-     *
-     * 1. Venta
-     * 2. Detalles
-     * 3. Descuento de inventario
-     * 4. Movimiento de inventario
-     * 5. Pago
-     *
-     * Si cualquier operación falla, toda la transacción
-     * se revierte mediante ROLLBACK.
+     * Ejecuta toda la operación dentro de una única
+     * transacción PostgreSQL.
      *
      * @param venta venta principal
-     * @param detalles productos vendidos
-     * @param pago pago de la venta
+     * @param detalles detalles de la venta
+     * @param pago pago realizado
      *
      * @return ID de la venta creada
      */
@@ -58,30 +98,140 @@ public class VentaIntegralService {
             List<VentaDetalle> detalles,
             Pago pago) {
 
+        /*
+
+         * =====================================================
+         * 1. VALIDACIONES PREVIAS
+         * =====================================================
+         *
+         * Estas validaciones ocurren ANTES de abrir
+         * la conexión/transacción.
+         */
+
         validarVenta(venta);
+
         validarDetalles(detalles);
+
         validarPago(pago);
+
+        /*
+
+         * Validamos que no existan productos repetidos.
+         */
+        validarProductosDuplicados(detalles);
+
+        /*
+
+         * =====================================================
+         * 2. CÁLCULO CENTRALIZADO
+         * =====================================================
+         *
+         * Toda la matemática permanece en
+         * CalculadoraVentaUtil.
+         */
+
+        ResultadoVenta resultado =
+                CalculadoraVentaUtil.calcularVenta(
+                        detalles
+                );
+
+        /*
+
+         * =====================================================
+         * 3. ASIGNAR RESULTADOS
+         * =====================================================
+         */
+
+        venta.setSubtotal(
+                resultado.getSubtotal()
+        );
+
+        venta.setDescuento(
+                resultado.getDescuento()
+        );
+
+        venta.setImpuesto(
+                resultado.getImpuesto()
+        );
+
+        venta.setTotal(
+                resultado.getTotal()
+        );
+
+        /*
+
+         * =====================================================
+         * 4. VALIDAR PAGO CONTRA TOTAL
+         * =====================================================
+         */
+
+        if (pago.getMonto().compareTo(
+                resultado.getTotal()
+        ) != 0) {
+
+
+            throw new IllegalArgumentException(
+                    "El monto del pago debe ser igual "
+                            + "al total de la venta. "
+                            + "Total esperado: "
+                            + resultado.getTotal()
+                            + ", monto recibido: "
+                            + pago.getMonto()
+            );
+
+
+        }
+
+        /*
+
+         * =====================================================
+         * 5. CONEXIÓN
+         * =====================================================
+         */
 
         try (
                 Connection connection =
                         ConexionBD.conectar()
         ) {
 
+
             /*
-             * Desde este punto todas las operaciones
-             * utilizan la misma conexión.
+             * =================================================
+             * 6. INICIAR TRANSACCIÓN
+             * =================================================
              */
+
             connection.setAutoCommit(false);
 
             try {
 
                 /*
-                 * =====================================================
-                 * 1. CREAR VENTA
-                 * =====================================================
+                 * =================================================
+                 * 7. VALIDAR Y BLOQUEAR TODO EL INVENTARIO
+                 * =================================================
+                 *
+                 * Esta fase ocurre antes de realizar
+                 * cualquier INSERT de venta/detalle.
+                 *
+                 * El objetivo es detectar primero si
+                 * toda la venta puede realizarse.
                  */
 
-                venta.setEstado("REGISTRADA");
+                validarInventarios(
+                        connection,
+                        venta,
+                        detalles
+                );
+
+                /*
+                 * =================================================
+                 * 8. CREAR VENTA
+                 * =================================================
+                 */
+
+                venta.setEstado(
+                        "REGISTRADA"
+                );
 
                 Long ventaId =
                         ventaDAO.crear(
@@ -90,77 +240,27 @@ public class VentaIntegralService {
                         );
 
                 /*
-                 * =====================================================
-                 * 2. PROCESAR DETALLES E INVENTARIO
-                 * =====================================================
+                 * =================================================
+                 * 9. CREAR DETALLES Y MOVIMIENTOS
+                 * =================================================
                  */
 
                 for (VentaDetalle detalle : detalles) {
 
-                    validarDetalle(detalle);
-
                     /*
-                     * Asociamos el detalle con la venta
-                     * recién creada.
+                     * Asociamos el detalle
+                     * con la venta.
                      */
-                    detalle.setVentaId(ventaId);
+
+                    detalle.setVentaId(
+                            ventaId
+                    );
 
                     /*
-                     * =================================================
-                     * Buscar y bloquear inventario
-                     * =================================================
+                     * Crear detalle.
                      *
-                     * FOR UPDATE garantiza que otro proceso
-                     * no pueda modificar esta fila mientras
-                     * nuestra transacción esté activa.
-                     */
-                    Inventario inventario =
-                            inventarioDAO.buscarPorProducto(
-                                    connection,
-                                    venta.getEmpresaId(),
-                                    venta.getSucursalId(),
-                                    detalle.getProductoId()
-                            );
-
-                    if (inventario == null) {
-
-                        throw new IllegalArgumentException(
-                                "No existe inventario para el producto: "
-                                        + detalle.getProductoId()
-                        );
-                    }
-
-                    if (!Boolean.TRUE.equals(
-                            inventario.getActivo()
-                    )) {
-
-                        throw new IllegalStateException(
-                                "El inventario del producto está inactivo: "
-                                        + detalle.getProductoId()
-                        );
-                    }
-
-                    /*
-                     * =================================================
-                     * Verificar stock
-                     * =================================================
-                     */
-
-                    if (inventario.getCantidad()
-                            .compareTo(
-                                    detalle.getCantidad()
-                            ) < 0) {
-
-                        throw new IllegalStateException(
-                                "Stock insuficiente para el producto: "
-                                        + detalle.getProductoId()
-                        );
-                    }
-
-                    /*
-                     * =================================================
-                     * Crear detalle
-                     * =================================================
+                     * Los valores monetarios ya fueron
+                     * calculados por CalculadoraVentaUtil.
                      */
 
                     ventaDetalleDAO.crear(
@@ -169,21 +269,10 @@ public class VentaIntegralService {
                     );
 
                     /*
-                     * =================================================
-                     * Descontar inventario
-                     * =================================================
-                     */
-
-                    inventarioDAO.descontarStock(
-                            connection,
-                            inventario.getId(),
-                            detalle.getCantidad()
-                    );
-
-                    /*
-                     * =================================================
-                     * Registrar movimiento de salida
-                     * =================================================
+                     * Registrar movimiento de inventario.
+                     *
+                     * PostgreSQL se encarga de actualizar
+                     * el stock.
                      */
 
                     movimientoDAO.registrarMovimiento(
@@ -191,7 +280,7 @@ public class VentaIntegralService {
                             venta.getEmpresaId(),
                             venta.getSucursalId(),
                             detalle.getProductoId(),
-                            "SALIDA",
+                            "VENTA",
                             detalle.getCantidad(),
                             "Venta",
                             "VENTA",
@@ -201,17 +290,20 @@ public class VentaIntegralService {
                 }
 
                 /*
-                 * =====================================================
-                 * 3. REGISTRAR PAGO
-                 * =====================================================
+                 * =================================================
+                 * 10. REGISTRAR PAGO
+                 * =================================================
                  */
 
-                pago.setVentaId(ventaId);
+                pago.setVentaId(
+                        ventaId
+                );
 
                 /*
-                 * Si no se especificó usuario en el pago,
+                 * Si el pago no tiene usuario,
                  * heredamos el usuario de la venta.
                  */
+
                 if (pago.getAuthUserId() == null) {
 
                     pago.setAuthUserId(
@@ -225,9 +317,25 @@ public class VentaIntegralService {
                 );
 
                 /*
-                 * =====================================================
-                 * 4. CONFIRMAR TRANSACCIÓN
-                 * =====================================================
+                 * =================================================
+                 * 11. MARCAR VENTA COMO PAGADA
+                 * =================================================
+                 */
+
+                ventaDAO.marcarComoPagada(
+                        connection,
+                        venta.getEmpresaId(),
+                        ventaId
+                );
+
+                venta.setEstado(
+                        "PAGADA"
+                );
+
+                /*
+                 * =================================================
+                 * 12. COMMIT
+                 * =================================================
                  */
 
                 connection.commit();
@@ -237,21 +345,30 @@ public class VentaIntegralService {
             } catch (Exception e) {
 
                 /*
-                 * =====================================================
+                 * =================================================
                  * ROLLBACK
-                 * =====================================================
-                 *
-                 * Si cualquier operación falla,
-                 * se deshace toda la venta.
+                 * =================================================
                  */
+
                 try {
+
                     connection.rollback();
+
                 } catch (Exception rollbackError) {
 
                     e.addSuppressed(
                             rollbackError
                     );
                 }
+
+                /*
+                 * La venta NO debe quedar PAGADA
+                 * si la transacción falló.
+                 */
+
+                venta.setEstado(
+                        "REGISTRADA"
+                );
 
                 throw new RuntimeException(
                         "No se pudo registrar la venta integral",
@@ -261,18 +378,29 @@ public class VentaIntegralService {
             } finally {
 
                 /*
-                 * Restauramos el comportamiento normal
-                 * de la conexión antes de cerrarla.
+                 * Restauramos AutoCommit.
                  */
+
                 try {
-                    connection.setAutoCommit(true);
+
+                    connection.setAutoCommit(
+                            true
+                    );
+
                 } catch (Exception ignored) {
                 }
             }
 
+
         } catch (Exception e) {
 
+
+            /*
+             * Conservamos las excepciones RuntimeException.
+             */
+
             if (e instanceof RuntimeException) {
+
                 throw (RuntimeException) e;
             }
 
@@ -280,19 +408,110 @@ public class VentaIntegralService {
                     "Error al conectar con la base de datos",
                     e
             );
+
+
         }
     }
 
+    // =========================================================
+    // VALIDACIÓN DE INVENTARIOS
+    // =========================================================
+
     /**
+
+     * Valida todos los inventarios antes de crear
+     * la venta.
+     *
+     * El DAO debe utilizar SELECT ... FOR UPDATE
+     * para bloquear los registros durante la transacción.
+     *
+     * Esto ayuda a evitar problemas de concurrencia
+     * cuando dos ventas intentan consumir el mismo stock.
+     */
+    private void validarInventarios(
+            Connection connection,
+            Venta venta,
+            List<VentaDetalle> detalles) {
+
+        for (VentaDetalle detalle : detalles) {
+
+
+            Inventario inventario =
+                    inventarioDAO.buscarPorProducto(
+                            connection,
+                            venta.getEmpresaId(),
+                            venta.getSucursalId(),
+                            detalle.getProductoId()
+                    );
+
+            /*
+             * Inventario inexistente.
+             */
+
+            if (inventario == null) {
+
+                throw new IllegalArgumentException(
+                        "No existe inventario para el producto: "
+                                + detalle.getProductoId()
+                );
+            }
+
+            /*
+             * Inventario inactivo.
+             */
+
+            if (!Boolean.TRUE.equals(
+                    inventario.getActivo()
+            )) {
+
+                throw new IllegalStateException(
+                        "El inventario del producto está inactivo: "
+                                + detalle.getProductoId()
+                );
+            }
+
+            /*
+             * Validar stock disponible.
+             */
+
+            if (inventario.getCantidad()
+                    .compareTo(
+                            detalle.getCantidad()
+                    ) < 0) {
+
+                throw new IllegalStateException(
+                        "Stock insuficiente para el producto: "
+                                + detalle.getProductoId()
+                                + ". Stock disponible: "
+                                + inventario.getCantidad()
+                                + ". Cantidad solicitada: "
+                                + detalle.getCantidad()
+                );
+            }
+
+
+        }
+    }
+
+    // =========================================================
+    // VALIDACIONES GENERALES
+    // =========================================================
+
+    /**
+
      * Valida la venta principal.
      */
-    private void validarVenta(Venta venta) {
+    private void validarVenta(
+            Venta venta) {
 
         if (venta == null) {
+
 
             throw new IllegalArgumentException(
                     "La venta es obligatoria"
             );
+
+
         }
 
         validarId(
@@ -308,33 +527,17 @@ public class VentaIntegralService {
         if (venta.getNumero() == null
                 || venta.getNumero().isBlank()) {
 
+
             throw new IllegalArgumentException(
                     "El número de venta es obligatorio"
             );
+
+
         }
-
-        validarMonto(
-                venta.getSubtotal(),
-                "El subtotal"
-        );
-
-        validarMonto(
-                venta.getDescuento(),
-                "El descuento"
-        );
-
-        validarMonto(
-                venta.getImpuesto(),
-                "El impuesto"
-        );
-
-        validarMonto(
-                venta.getTotal(),
-                "El total"
-        );
     }
 
     /**
+
      * Valida la lista de detalles.
      */
     private void validarDetalles(
@@ -343,18 +546,27 @@ public class VentaIntegralService {
         if (detalles == null
                 || detalles.isEmpty()) {
 
+
             throw new IllegalArgumentException(
                     "La venta debe contener al menos un detalle"
             );
+
+
         }
 
         for (VentaDetalle detalle : detalles) {
 
-            validarDetalle(detalle);
+
+            validarDetalle(
+                    detalle
+            );
+
+
         }
     }
 
     /**
+
      * Valida un detalle individual.
      */
     private void validarDetalle(
@@ -362,9 +574,12 @@ public class VentaIntegralService {
 
         if (detalle == null) {
 
+
             throw new IllegalArgumentException(
                     "El detalle de venta es obligatorio"
             );
+
+
         }
 
         validarId(
@@ -376,89 +591,133 @@ public class VentaIntegralService {
                 || detalle.getCantidad()
                 .compareTo(BigDecimal.ZERO) <= 0) {
 
+
             throw new IllegalArgumentException(
                     "La cantidad debe ser mayor que cero"
             );
+
+
         }
 
         if (detalle.getPrecioVenta() == null
                 || detalle.getPrecioVenta()
                 .compareTo(BigDecimal.ZERO) < 0) {
 
+
             throw new IllegalArgumentException(
                     "El precio de venta no puede ser negativo"
             );
+
+
         }
 
-        validarMonto(
-                detalle.getDescuento(),
-                "El descuento del detalle"
-        );
+        if (detalle.getDescuento() != null
+                && detalle.getDescuento()
+                .compareTo(BigDecimal.ZERO) < 0) {
 
-        validarMonto(
-                detalle.getImpuesto(),
-                "El impuesto del detalle"
-        );
 
-        validarMonto(
-                detalle.getSubtotal(),
-                "El subtotal del detalle"
-        );
+            throw new IllegalArgumentException(
+                    "El descuento del detalle no puede ser negativo"
+            );
+
+
+        }
+
+        if (detalle.getImpuesto() != null
+                && detalle.getImpuesto()
+                .compareTo(BigDecimal.ZERO) < 0) {
+
+
+            throw new IllegalArgumentException(
+                    "El impuesto del detalle no puede ser negativo"
+            );
+
+        }
     }
 
     /**
+
      * Valida el pago.
      */
-    private void validarPago(Pago pago) {
+    private void validarPago(
+            Pago pago) {
 
         if (pago == null) {
+
 
             throw new IllegalArgumentException(
                     "El pago es obligatorio"
             );
+
+
         }
 
         if (pago.getMetodo() == null
                 || pago.getMetodo().isBlank()) {
 
+
             throw new IllegalArgumentException(
                     "El método de pago es obligatorio"
             );
+
+
         }
 
         if (pago.getMonto() == null
                 || pago.getMonto()
                 .compareTo(BigDecimal.ZERO) <= 0) {
 
+
             throw new IllegalArgumentException(
                     "El monto del pago debe ser mayor que cero"
             );
+
+
         }
     }
 
     /**
-     * Valida un monto no negativo.
+
+     * Valida que no existan productos repetidos.
+     *
+     * Un producto debe aparecer una sola vez
+     * dentro de una venta.
+     *
+     * Ejemplo inválido:
+     *
+     * Producto 2 → cantidad 2
+     * Producto 2 → cantidad 3
+     *
+     * En su lugar debería enviarse:
+     *
+     * Producto 2 → cantidad 5
      */
-    private void validarMonto(
-            BigDecimal monto,
-            String campo) {
+    private void validarProductosDuplicados(
+            List<VentaDetalle> detalles) {
 
-        if (monto == null) {
+        Set<Long> productos =
+                new HashSet<>();
 
-            throw new IllegalArgumentException(
-                    campo + " es obligatorio"
-            );
-        }
+        for (VentaDetalle detalle : detalles) {
 
-        if (monto.compareTo(BigDecimal.ZERO) < 0) {
 
-            throw new IllegalArgumentException(
-                    campo + " no puede ser negativo"
-            );
+            if (!productos.add(
+                    detalle.getProductoId()
+            )) {
+
+                throw new IllegalArgumentException(
+                        "El producto "
+                                + detalle.getProductoId()
+                                + " aparece más de una vez "
+                                + "en la misma venta"
+                );
+            }
+
         }
     }
 
     /**
+
      * Valida un identificador.
      */
     private void validarId(
@@ -467,9 +726,12 @@ public class VentaIntegralService {
 
         if (id == null || id <= 0) {
 
+
             throw new IllegalArgumentException(
                     mensaje
             );
+
+
         }
     }
 }
