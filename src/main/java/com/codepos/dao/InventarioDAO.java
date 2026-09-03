@@ -3,28 +3,50 @@ package com.codepos.dao;
 import com.codepos.config.ConexionBD;
 import com.codepos.model.Inventario;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.math.BigDecimal;
+import java.sql.SQLException;
 
+
+/**
+ * DAO encargado de gestionar el inventario.
+ *
+ * Responsabilidades:
+ *
+ * - Consultar existencia de productos.
+ * - Bloquear inventario durante ventas.
+ * - Actualizar cantidades.
+ *
+ * IMPORTANTE:
+ *
+ * Cuando se utiliza dentro de una venta integral,
+ * debe trabajar con la misma conexión de la transacción.
+ */
 public class InventarioDAO {
 
+
     /**
-     * Busca el inventario utilizando una conexión propia.
+     * Consulta inventario utilizando una conexión propia.
      *
-     * Mantiene compatibilidad con los servicios y tests
-     * que consultan inventario fuera de una transacción integral.
+     * Uso:
+     *
+     * - Consultas independientes.
+     * - Pruebas.
+     * - Servicios simples.
      */
     public Inventario buscarPorProducto(
             Long empresaId,
             Long sucursalId,
             Long productoId) {
 
+
         try (
                 Connection connection =
                         ConexionBD.conectar()
         ) {
+
 
             return buscarPorProducto(
                     connection,
@@ -33,30 +55,42 @@ public class InventarioDAO {
                     productoId
             );
 
-        } catch (Exception e) {
+
+        } catch (SQLException e) {
+
 
             throw new RuntimeException(
-                    "Error al consultar el inventario",
+                    "Error al consultar inventario",
                     e
             );
         }
     }
 
+
+
     /**
-     * Busca el inventario utilizando una conexión existente.
+     * Consulta inventario dentro de una transacción.
      *
-     * Este método está diseñado para operaciones
-     * transaccionales.
+     * FOR UPDATE:
      *
-     * FOR UPDATE bloquea la fila durante la transacción,
-     * evitando modificaciones concurrentes mientras
-     * se verifica y descuenta el stock.
+     * Bloquea la fila del inventario evitando
+     * ventas simultáneas que puedan generar
+     * stock negativo.
      */
     public Inventario buscarPorProducto(
             Connection connection,
             Long empresaId,
             Long sucursalId,
             Long productoId) {
+
+
+        validarParametros(
+                connection,
+                empresaId,
+                sucursalId,
+                productoId
+        );
+
 
         String sql = """
             SELECT
@@ -77,44 +111,96 @@ public class InventarioDAO {
             FOR UPDATE
             """;
 
+
         try (
                 PreparedStatement statement =
                         connection.prepareStatement(sql)
         ) {
 
-            statement.setLong(1, empresaId);
-            statement.setLong(2, sucursalId);
-            statement.setLong(3, productoId);
 
-            try (
-                    ResultSet resultSet =
+            statement.setLong(
+                    1,
+                    empresaId
+            );
+
+
+            statement.setLong(
+                    2,
+                    sucursalId
+            );
+
+
+            statement.setLong(
+                    3,
+                    productoId
+            );
+
+
+            try(
+                    ResultSet rs =
                             statement.executeQuery()
-            ) {
+            ){
 
-                if (resultSet.next()) {
-                    return mapearInventario(resultSet);
+                if(rs.next()){
+
+                    return mapearInventario(rs);
                 }
             }
 
-        } catch (Exception e) {
+
+        } catch(SQLException e){
+
 
             throw new RuntimeException(
-                    "Error al consultar inventario dentro de la transacción",
+                    "Error al buscar inventario del producto",
                     e
             );
         }
 
+
         return null;
     }
 
+
+
+
     /**
-     * Descuenta stock utilizando la conexión
-     * de la transacción actual.
+     * Descuenta una cantidad del inventario.
+     *
+     * Se ejecuta dentro de la misma transacción
+     * de la venta.
      */
     public void descontarStock(
             Connection connection,
             Long inventarioId,
             BigDecimal cantidad) {
+
+
+        if(connection == null){
+
+            throw new IllegalArgumentException(
+                    "La conexión es obligatoria"
+            );
+        }
+
+
+        if(inventarioId == null || inventarioId <= 0){
+
+            throw new IllegalArgumentException(
+                    "El inventario es obligatorio"
+            );
+        }
+
+
+        if(cantidad == null
+                || cantidad.compareTo(BigDecimal.ZERO) <= 0){
+
+            throw new IllegalArgumentException(
+                    "La cantidad debe ser mayor que cero"
+            );
+        }
+
+
 
         String sql = """
             UPDATE inventarios
@@ -124,88 +210,177 @@ public class InventarioDAO {
               AND cantidad >= ?
             """;
 
-        try (
+
+
+        try(
                 PreparedStatement statement =
                         connection.prepareStatement(sql)
-        ) {
+        ){
 
-            statement.setBigDecimal(1, cantidad);
-            statement.setLong(2, inventarioId);
-            statement.setBigDecimal(3, cantidad);
+
+            statement.setBigDecimal(
+                    1,
+                    cantidad
+            );
+
+
+            statement.setLong(
+                    2,
+                    inventarioId
+            );
+
+
+            statement.setBigDecimal(
+                    3,
+                    cantidad
+            );
+
+
 
             int filas =
                     statement.executeUpdate();
 
-            if (filas != 1) {
 
-                throw new RuntimeException(
-                        "No hay inventario suficiente para realizar la venta"
+
+            if(filas != 1){
+
+                throw new IllegalStateException(
+                        "No existe inventario suficiente para descontar stock"
                 );
             }
 
-        } catch (Exception e) {
+
+
+        }catch(SQLException e){
+
 
             throw new RuntimeException(
-                    "Error al descontar inventario",
+                    "Error actualizando inventario",
                     e
             );
         }
     }
 
+
+
+
     /**
-     * Convierte un ResultSet en un objeto Inventario.
+     * Convierte registro SQL a objeto Inventario.
      */
     private Inventario mapearInventario(
-            ResultSet resultSet) throws Exception {
+            ResultSet rs)
+            throws SQLException {
 
-        Inventario inventario = new Inventario();
+
+
+        Inventario inventario =
+                new Inventario();
+
+
 
         inventario.setId(
-                resultSet.getLong("id")
+                rs.getLong("id")
         );
+
 
         inventario.setEmpresaId(
-                resultSet.getLong("empresa_id")
+                rs.getLong("empresa_id")
         );
+
 
         inventario.setSucursalId(
-                resultSet.getLong("sucursal_id")
+                rs.getLong("sucursal_id")
         );
+
 
         inventario.setProductoId(
-                resultSet.getLong("producto_id")
+                rs.getLong("producto_id")
         );
+
 
         inventario.setCantidad(
-                resultSet.getBigDecimal("cantidad")
+                rs.getBigDecimal("cantidad")
         );
+
 
         inventario.setStockMinimo(
-                resultSet.getBigDecimal("stock_minimo")
+                rs.getBigDecimal("stock_minimo")
         );
+
 
         inventario.setStockMaximo(
-                resultSet.getBigDecimal("stock_maximo")
+                rs.getBigDecimal("stock_maximo")
         );
+
 
         inventario.setActivo(
-                resultSet.getBoolean("activo")
+                rs.getBoolean("activo")
         );
 
+
+
         inventario.setCreatedAt(
-                resultSet.getObject(
+                rs.getObject(
                         "created_at",
                         java.time.OffsetDateTime.class
                 )
         );
 
+
+
         inventario.setUpdatedAt(
-                resultSet.getObject(
+                rs.getObject(
                         "updated_at",
                         java.time.OffsetDateTime.class
                 )
         );
 
+
         return inventario;
+    }
+
+
+
+
+    /**
+     * Validaciones comunes.
+     */
+    private void validarParametros(
+            Connection connection,
+            Long empresaId,
+            Long sucursalId,
+            Long productoId) {
+
+
+        if(connection == null){
+
+            throw new IllegalArgumentException(
+                    "La conexión es obligatoria"
+            );
+        }
+
+
+        if(empresaId == null || empresaId <= 0){
+
+            throw new IllegalArgumentException(
+                    "La empresa es obligatoria"
+            );
+        }
+
+
+        if(sucursalId == null || sucursalId <= 0){
+
+            throw new IllegalArgumentException(
+                    "La sucursal es obligatoria"
+            );
+        }
+
+
+        if(productoId == null || productoId <= 0){
+
+            throw new IllegalArgumentException(
+                    "El producto es obligatorio"
+            );
+        }
     }
 }

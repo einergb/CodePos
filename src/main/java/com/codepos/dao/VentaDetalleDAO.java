@@ -8,12 +8,28 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+
+/**
+ * DAO encargado de la persistencia
+ * de detalles de venta.
+ *
+ * Soporta:
+ *
+ * - Consultas individuales.
+ * - Listados.
+ * - Creación independiente.
+ * - Creación dentro de transacciones.
+ *
+ */
 public class VentaDetalleDAO {
 
+
     /**
-     * Busca un detalle de venta por su ID.
+     * Busca un detalle por ID.
      */
-    public VentaDetalle buscarPorId(Long detalleId) {
+    public VentaDetalle buscarPorId(
+            Long detalleId) {
+
 
         String sql = """
             SELECT
@@ -30,38 +46,62 @@ public class VentaDetalleDAO {
             WHERE id = ?
             """;
 
-        try (
-                Connection conexion = ConexionBD.conectar();
+
+        try(
+                Connection connection =
+                        ConexionBD.conectar();
+
                 PreparedStatement ps =
-                        conexion.prepareStatement(sql)
-        ) {
+                        connection.prepareStatement(sql)
+        ){
 
-            ps.setLong(1, detalleId);
 
-            try (ResultSet rs = ps.executeQuery()) {
+            ps.setLong(
+                    1,
+                    detalleId
+            );
 
-                if (rs.next()) {
-                    return mapearVentaDetalle(rs);
+
+            try(ResultSet rs =
+                        ps.executeQuery()){
+
+
+                if(rs.next()){
+
+                    return mapearVentaDetalle(
+                            rs
+                    );
+
                 }
+
             }
 
-        } catch (SQLException e) {
+
+        }catch(SQLException e){
+
 
             throw new RuntimeException(
                     "Error al buscar detalle de venta",
                     e
             );
+
         }
 
+
         return null;
+
     }
 
+
+
+
+
     /**
-     * Lista todos los detalles asociados
-     * a una venta.
+     * Lista detalles de una venta.
      */
     public List<VentaDetalle> listarPorVenta(
-            Long ventaId) {
+            Long ventaId){
+
 
         String sql = """
             SELECT
@@ -79,83 +119,133 @@ public class VentaDetalleDAO {
             ORDER BY id
             """;
 
+
         List<VentaDetalle> detalles =
                 new ArrayList<>();
 
-        try (
-                Connection conexion = ConexionBD.conectar();
+
+
+        try(
+                Connection connection =
+                        ConexionBD.conectar();
+
                 PreparedStatement ps =
-                        conexion.prepareStatement(sql)
-        ) {
+                        connection.prepareStatement(sql)
 
-            ps.setLong(1, ventaId);
+        ){
 
-            try (ResultSet rs = ps.executeQuery()) {
 
-                while (rs.next()) {
+            ps.setLong(
+                    1,
+                    ventaId
+            );
+
+
+
+            try(ResultSet rs =
+                        ps.executeQuery()){
+
+
+                while(rs.next()){
+
 
                     detalles.add(
                             mapearVentaDetalle(rs)
                     );
+
+
                 }
+
             }
 
-        } catch (SQLException e) {
+
+        }catch(SQLException e){
+
 
             throw new RuntimeException(
                     "Error al listar detalles de venta",
                     e
             );
+
         }
 
+
         return detalles;
+
     }
 
-    /**
-     * Crea un detalle utilizando una conexión propia.
-     *
-     * Mantiene compatibilidad con los tests y servicios
-     * que crean un detalle de forma independiente.
-     */
-    public Long crear(VentaDetalle detalle) {
 
-        try (Connection conexion = ConexionBD.conectar()) {
+
+
+
+
+
+    /**
+     * Crea detalle con conexión propia.
+     *
+     * Compatible con pruebas unitarias
+     * y servicios independientes.
+     */
+    public Long crear(
+            VentaDetalle detalle){
+
+
+
+        try(
+                Connection connection =
+                        ConexionBD.conectar()
+
+        ){
+
 
             return crear(
-                    conexion,
+                    connection,
                     detalle
             );
 
-        } catch (SQLException e) {
+
+
+        }catch(SQLException e){
+
 
             throw new RuntimeException(
                     "Error al crear detalle de venta",
                     e
             );
+
         }
+
     }
 
+
+
+
+
+
+
+
+
     /**
-     * Crea un detalle utilizando una conexión existente.
+     * Crea detalle usando conexión existente.
      *
-     * Este método se utiliza dentro de una transacción
-     * integral de venta.
+     * Utilizado por VentaIntegralService.
      *
-     * IMPORTANTE:
+     * NO:
      *
-     * No abre la conexión.
-     * No cierra la conexión.
-     * No realiza commit.
-     * No realiza rollback.
+     * - abre conexión
+     * - cierra conexión
+     * - hace commit
+     * - hace rollback
      *
-     * La transacción pertenece al Service.
      */
     public Long crear(
-            Connection conexion,
-            VentaDetalle detalle) {
+            Connection connection,
+            VentaDetalle detalle){
+
+
 
         String sql = """
-            INSERT INTO venta_detalles (
+            INSERT INTO venta_detalles(
                 venta_id,
                 producto_id,
                 cantidad,
@@ -164,122 +254,233 @@ public class VentaDetalleDAO {
                 impuesto,
                 subtotal
             )
-            VALUES (
-                ?, ?, ?, ?, ?, ?, ?
+            VALUES(
+                ?,?,?,?,?,?,?
             )
             RETURNING id
             """;
 
-        try (
+
+
+        try(
                 PreparedStatement ps =
-                        conexion.prepareStatement(sql)
-        ) {
+                        connection.prepareStatement(sql)
+
+        ){
+
+
 
             ps.setLong(
                     1,
                     detalle.getVentaId()
             );
 
+
+
             ps.setLong(
                     2,
                     detalle.getProductoId()
             );
+
+
 
             ps.setBigDecimal(
                     3,
                     detalle.getCantidad()
             );
 
+
+
             ps.setBigDecimal(
                     4,
                     detalle.getPrecioVenta()
             );
 
+
+
             ps.setBigDecimal(
                     5,
-                    detalle.getDescuento()
+                    valorSeguro(
+                            detalle.getDescuento()
+                    )
             );
+
+
 
             ps.setBigDecimal(
                     6,
-                    detalle.getImpuesto()
+                    valorSeguro(
+                            detalle.getImpuesto()
+                    )
             );
+
+
 
             ps.setBigDecimal(
                     7,
                     detalle.getSubtotal()
             );
 
-            try (ResultSet rs =
-                         ps.executeQuery()) {
 
-                if (rs.next()) {
+
+
+
+            try(ResultSet rs =
+                        ps.executeQuery()){
+
+
+                if(rs.next()){
+
+
                     return rs.getLong("id");
+
+
                 }
+
+
             }
 
-        } catch (SQLException e) {
+
+
+        }catch(SQLException e){
+
 
             throw new RuntimeException(
-                    "Error al crear detalle de venta",
+                    "Error al insertar detalle de venta",
                     e
             );
+
+
         }
 
+
+
         throw new RuntimeException(
-                "No se pudo obtener el ID del detalle creado"
+                "No se pudo obtener ID del detalle"
         );
+
     }
 
+
+
+
+
+
+
+
+
     /**
-     * Convierte un ResultSet en un objeto VentaDetalle.
+     * Convierte ResultSet a entidad.
      */
     private VentaDetalle mapearVentaDetalle(
             ResultSet rs)
             throws SQLException {
 
+
+
         VentaDetalle detalle =
                 new VentaDetalle();
+
+
 
         detalle.setId(
                 rs.getLong("id")
         );
 
+
+
         detalle.setVentaId(
                 rs.getLong("venta_id")
         );
+
+
 
         detalle.setProductoId(
                 rs.getLong("producto_id")
         );
 
+
+
         detalle.setCantidad(
                 rs.getBigDecimal("cantidad")
         );
+
+
 
         detalle.setPrecioVenta(
                 rs.getBigDecimal("precio_venta")
         );
 
+
+
         detalle.setDescuento(
-                rs.getBigDecimal("descuento")
+                valorSeguro(
+                        rs.getBigDecimal("descuento")
+                )
         );
 
+
+
         detalle.setImpuesto(
-                rs.getBigDecimal("impuesto")
+                valorSeguro(
+                        rs.getBigDecimal("impuesto")
+                )
         );
+
+
 
         detalle.setSubtotal(
                 rs.getBigDecimal("subtotal")
         );
 
-        detalle.setCreatedAt(
-                rs.getObject(
-                        "created_at",
-                        OffsetDateTime.class
-                )
-        );
+
+
+        Timestamp fecha =
+                rs.getTimestamp(
+                        "created_at"
+                );
+
+
+        if(fecha != null){
+
+
+            detalle.setCreatedAt(
+                    fecha.toInstant()
+                            .atOffset(
+                                    java.time.ZoneOffset.UTC
+                            )
+            );
+
+        }
+
+
 
         return detalle;
+
     }
+
+
+
+
+
+
+
+
+
+    /**
+     * Evita trabajar con NULL
+     * en cálculos monetarios.
+     */
+    private java.math.BigDecimal valorSeguro(
+            java.math.BigDecimal valor){
+
+
+        return valor == null
+                ? java.math.BigDecimal.ZERO
+                : valor;
+
+
+    }
+
+
 }

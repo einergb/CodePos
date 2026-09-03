@@ -7,243 +7,373 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
-
- * Contiene la lógica de negocio de los detalles de venta.
+ * Servicio encargado de la lógica de negocio
+ * de los detalles de venta.
  *
- * El Service valida los datos antes de enviarlos al DAO.
+ * Responsabilidades:
+ *
+ * - Validar información recibida.
+ * - Aplicar reglas de negocio.
+ * - Preparar datos antes del DAO.
+ *
  */
 public class VentaDetalleService {
 
+
     private final VentaDetalleDAO ventaDetalleDAO;
 
+
     public VentaDetalleService() {
+
         this.ventaDetalleDAO =
                 new VentaDetalleDAO();
+
     }
 
-    /**
 
-     * Busca un detalle de venta por su ID.
-     *
-     * @param detalleId ID del detalle
-     * @return detalle encontrado o null
+
+    /**
+     * Busca detalle por ID.
      */
     public VentaDetalle buscarPorId(
             Long detalleId) {
 
+
         validarId(
                 detalleId,
-                "El ID del detalle es obligatorio"
+                "El detalle de venta es obligatorio"
         );
 
-        return ventaDetalleDAO.buscarPorId(
-                detalleId
-        );
+
+        VentaDetalle detalle =
+                ventaDetalleDAO.buscarPorId(
+                        detalleId
+                );
+
+
+        if(detalle == null){
+
+            throw new IllegalArgumentException(
+                    "No existe el detalle indicado"
+            );
+
+        }
+
+
+        return detalle;
+
     }
 
-    /**
 
-     * Lista todos los detalles asociados
+
+
+
+    /**
+     * Lista detalles asociados
      * a una venta.
-     *
-     * @param ventaId ID de la venta
-     * @return lista de detalles
      */
     public List<VentaDetalle> listarPorVenta(
             Long ventaId) {
 
+
         validarId(
                 ventaId,
-                "El ID de la venta es obligatorio"
+                "La venta es obligatoria"
         );
+
 
         return ventaDetalleDAO.listarPorVenta(
                 ventaId
         );
+
     }
 
-    /**
 
-     * Crea un nuevo detalle de venta.
-     *
-     * @param detalle detalle a crear
-     * @return ID generado
+
+
+
+    /**
+     * Crear detalle de venta.
      */
     public Long crear(
             VentaDetalle detalle) {
 
-        validarDetalle(detalle);
+
+        validarDetalle(
+                detalle
+        );
+
 
         return ventaDetalleDAO.crear(
                 detalle
         );
+
     }
 
-    /**
 
-     * Valida los datos principales del detalle.
+
+
+
+
+
+    /**
+     * Validaciones principales.
      */
     private void validarDetalle(
             VentaDetalle detalle) {
 
-        if (detalle == null) {
 
+
+        if(detalle == null){
 
             throw new IllegalArgumentException(
                     "El detalle de venta es obligatorio"
             );
 
-
         }
 
-        /*
 
-         * La venta es obligatoria.
-         */
+
+
         validarId(
                 detalle.getVentaId(),
                 "La venta es obligatoria"
         );
 
-        /*
 
-         * El producto es obligatorio.
-         */
+
+
         validarId(
                 detalle.getProductoId(),
                 "El producto es obligatorio"
         );
 
-        /*
 
-         * La cantidad debe existir.
+
+
+
+        /*
+         * Cantidad.
          */
-        if (detalle.getCantidad() == null) {
+        if(detalle.getCantidad()==null){
 
             throw new IllegalArgumentException(
                     "La cantidad es obligatoria"
             );
+
         }
 
-        /*
 
-         * La cantidad debe ser mayor que cero.
-         */
-        if (detalle.getCantidad()
-                .compareTo(BigDecimal.ZERO) <= 0) {
+
+        if(detalle.getCantidad()
+                .compareTo(BigDecimal.ZERO)<=0){
+
 
             throw new IllegalArgumentException(
                     "La cantidad debe ser mayor que cero"
             );
+
         }
 
-        /*
 
-         * El precio debe existir y no puede ser negativo.
+
+
+
+        /*
+         * Precio venta.
          */
-        validarMonto(
+        validarMontoObligatorio(
                 detalle.getPrecioVenta(),
-                "El precio de venta es obligatorio",
-                "El precio de venta no puede ser negativo"
+                "El precio de venta es obligatorio"
         );
 
-        /*
 
-         * El descuento no puede ser negativo.
+
+
+
+        /*
+         * Descuento.
+         *
+         * Puede ser null.
+         * Si existe no puede ser negativo.
          */
-        validarMontoNoNegativo(
+        validarMontoOpcional(
                 detalle.getDescuento(),
                 "El descuento no puede ser negativo"
         );
 
-        /*
 
-         * El impuesto no puede ser negativo.
+
+
+
+
+        /*
+         * Impuesto.
          */
-        validarMontoNoNegativo(
+        validarMontoOpcional(
                 detalle.getImpuesto(),
                 "El impuesto no puede ser negativo"
         );
 
+
+
+
+
+
+
         /*
-
-         * El subtotal debe existir y no puede ser negativo.
+         * Subtotal.
          */
-        validarMonto(
+        validarMontoObligatorio(
                 detalle.getSubtotal(),
-                "El subtotal es obligatorio",
-                "El subtotal no puede ser negativo"
+                "El subtotal es obligatorio"
         );
+
+
+
+
+
+        /*
+         * Normalización.
+         */
+        normalizarValores(
+                detalle
+        );
+
+
     }
 
+
+
+
+
+
+
+
+
     /**
-
-     * Valida un monto obligatorio.
+     * Limpia valores antes de guardar.
      */
-    private void validarMonto(
-            BigDecimal monto,
-            String mensajeNulo,
-            String mensajeNegativo) {
-
-        if (monto == null) {
+    private void normalizarValores(
+            VentaDetalle detalle){
 
 
-            throw new IllegalArgumentException(
-                    mensajeNulo
+        if(detalle.getDescuento()==null){
+
+            detalle.setDescuento(
+                    BigDecimal.ZERO
             );
-
 
         }
 
-        if (monto.compareTo(BigDecimal.ZERO) < 0) {
 
+        if(detalle.getImpuesto()==null){
 
-            throw new IllegalArgumentException(
-                    mensajeNegativo
+            detalle.setImpuesto(
+                    BigDecimal.ZERO
             );
 
-
         }
+
+
     }
 
+
+
+
+
+
+
+
+
     /**
-
-     * Valida un monto opcional.
-     *
-     * Si el valor es null se permite.
+     * Valida monto obligatorio.
      */
-    private void validarMontoNoNegativo(
+    private void validarMontoObligatorio(
             BigDecimal monto,
-            String mensaje) {
+            String mensaje){
 
-        if (monto != null
-                && monto.compareTo(BigDecimal.ZERO) < 0) {
+
+        if(monto==null){
+
+            throw new IllegalArgumentException(
+                    mensaje
+            );
+
+        }
+
+
+
+        if(monto.compareTo(
+                BigDecimal.ZERO)<0){
 
 
             throw new IllegalArgumentException(
                     mensaje
             );
 
-
         }
+
+
     }
 
-    /**
 
-     * Valida un identificador.
+
+
+
+
+
+
+
+    /**
+     * Valida monto opcional.
+     */
+    private void validarMontoOpcional(
+            BigDecimal monto,
+            String mensaje){
+
+
+        if(monto!=null &&
+                monto.compareTo(
+                        BigDecimal.ZERO)<0){
+
+
+            throw new IllegalArgumentException(
+                    mensaje
+            );
+
+        }
+
+
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * Valida identificadores.
      */
     private void validarId(
             Long id,
-            String mensaje) {
+            String mensaje){
 
-        if (id == null || id <= 0) {
+
+        if(id==null || id<=0){
 
 
             throw new IllegalArgumentException(
                     mensaje
             );
 
-
         }
+
+
     }
+
+
 }

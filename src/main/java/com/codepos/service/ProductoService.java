@@ -10,260 +10,372 @@ public class ProductoService {
 
     private final ProductoDAO productoDAO;
 
+
     public ProductoService() {
+
         this.productoDAO = new ProductoDAO();
+
     }
 
+
     /**
-     * Busca un producto por empresa e ID.
+     * Busca producto por empresa e ID.
      */
     public Producto buscarPorId(
             Long empresaId,
             Long productoId) {
 
+
         validarId(
                 empresaId,
-                "El ID de la empresa es obligatorio"
+                "La empresa es obligatoria"
         );
+
 
         validarId(
                 productoId,
-                "El ID del producto es obligatorio"
+                "El producto es obligatorio"
         );
+
 
         return productoDAO.buscarPorId(
                 empresaId,
                 productoId
         );
+
     }
 
+
+
     /**
-     * Lista todos los productos de una empresa.
+     * Lista productos por empresa.
      */
     public List<Producto> listarPorEmpresa(
             Long empresaId) {
 
+
         validarId(
                 empresaId,
-                "El ID de la empresa es obligatorio"
+                "La empresa es obligatoria"
         );
+
 
         return productoDAO.listarPorEmpresa(
                 empresaId
         );
+
     }
 
+
+
+
     /**
-     * Crea un nuevo producto.
+     * Crear producto.
      */
-    public Long crear(Producto producto) {
+    public Long crear(
+            Producto producto) {
+
 
         validarProducto(producto);
 
-        return productoDAO.crear(producto);
+
+        return productoDAO.crear(
+                producto
+        );
+
     }
 
+
+
+
     /**
-     * Valida los datos principales del producto.
+     * Validación principal.
      */
     private void validarProducto(
             Producto producto) {
 
-        if (producto == null) {
+
+        if(producto == null){
 
             throw new IllegalArgumentException(
                     "El producto es obligatorio"
             );
+
         }
 
-        /*
-         * Empresa obligatoria.
-         */
+
+
         validarId(
                 producto.getEmpresaId(),
                 "La empresa es obligatoria"
         );
 
-        /*
-         * Unidad de medida obligatoria.
-         */
+
+
         validarId(
                 producto.getUnidadMedidaId(),
                 "La unidad de medida es obligatoria"
         );
 
+
+
         /*
-         * SKU obligatorio.
+         * SKU interno.
+         *
+         * IMPORTANTE:
+         *
+         * No dependemos del código de barras.
+         * Muchas microempresas no utilizan lector.
          */
-        if (producto.getSku() == null
-                || producto.getSku().trim().isEmpty()) {
+        if(producto.getSku()==null
+                || producto.getSku().isBlank()){
+
 
             throw new IllegalArgumentException(
                     "El SKU es obligatorio"
             );
+
         }
 
-        /*
-         * Nombre obligatorio.
-         */
-        if (producto.getNombre() == null
-                || producto.getNombre().trim().isEmpty()) {
+
+
+        if(producto.getNombre()==null
+                || producto.getNombre().isBlank()){
+
 
             throw new IllegalArgumentException(
                     "El nombre del producto es obligatorio"
             );
+
         }
 
+
+
         /*
-         * Precio de compra.
+         * Normalización.
          */
-        validarMontoNoNegativo(
+        producto.setSku(
+                producto.getSku().trim()
+        );
+
+
+        producto.setNombre(
+                producto.getNombre().trim()
+        );
+
+
+
+        /*
+         * Código de barras opcional.
+         */
+        if(producto.getCodigoBarras()!=null){
+
+            producto.setCodigoBarras(
+                    producto.getCodigoBarras().trim()
+            );
+
+        }
+
+
+
+        /*
+         * Descripción opcional.
+         */
+        if(producto.getDescripcion()!=null){
+
+            producto.setDescripcion(
+                    producto.getDescripcion().trim()
+            );
+
+        }
+
+
+
+
+        validarMonto(
                 producto.getPrecioCompra(),
-                "El precio de compra no puede ser negativo"
+                "El precio de compra es obligatorio"
         );
 
-        /*
-         * Precio de venta.
-         */
-        validarMontoNoNegativo(
+
+        validarMonto(
                 producto.getPrecioVenta(),
-                "El precio de venta no puede ser negativo"
+                "El precio de venta es obligatorio"
         );
 
-        /*
-         * Configuración del IVA.
-         */
+
+
         validarIVA(producto);
+
+
+
+        /*
+         * Si no especifica estado,
+         * queda activo.
+         */
+        if(producto.getActivo()==null){
+
+            producto.setActivo(true);
+
+        }
+
+
     }
 
+
+
+
     /**
-     * Valida la configuración tributaria del producto.
-     *
-     * Regla:
-     *
-     * Producto sin IVA:
-     * aplicaIva = false
-     * ivaPorcentaje = 0
-     *
-     * Producto con IVA:
-     * aplicaIva = true
-     * ivaPorcentaje > 0
+     * Validación IVA.
      */
     private void validarIVA(
-            Producto producto) {
+            Producto producto){
 
-        Boolean aplicaIva =
+
+        Boolean aplica =
                 producto.getAplicaIva();
 
-        BigDecimal ivaPorcentaje =
+
+        BigDecimal porcentaje =
                 producto.getIvaPorcentaje();
 
-        /*
-         * Ambos campos son obligatorios
-         * porque representan la configuración
-         * tributaria del producto.
-         */
-        if (aplicaIva == null) {
 
-            throw new IllegalArgumentException(
-                    "Debe indicar si el producto aplica IVA"
-            );
+
+        if(aplica==null){
+
+            producto.setAplicaIva(false);
+
+            aplica=false;
+
         }
 
-        if (ivaPorcentaje == null) {
 
-            throw new IllegalArgumentException(
-                    "El porcentaje de IVA es obligatorio"
+
+        if(porcentaje==null){
+
+            producto.setIvaPorcentaje(
+                    BigDecimal.ZERO
             );
+
+            porcentaje =
+                    BigDecimal.ZERO;
+
         }
 
-        /*
-         * El porcentaje no puede ser negativo.
-         */
-        if (ivaPorcentaje.compareTo(
-                BigDecimal.ZERO) < 0) {
+
+
+        if(porcentaje.compareTo(
+                BigDecimal.ZERO)<0){
+
 
             throw new IllegalArgumentException(
-                    "El porcentaje de IVA no puede ser negativo"
+                    "El IVA no puede ser negativo"
             );
+
         }
 
-        /*
-         * El porcentaje no puede superar 100%.
-         */
-        if (ivaPorcentaje.compareTo(
-                new BigDecimal("100")) > 0) {
+
+
+        if(porcentaje.compareTo(
+                new BigDecimal("100"))>0){
+
 
             throw new IllegalArgumentException(
-                    "El porcentaje de IVA no puede superar el 100%"
+                    "El IVA no puede superar 100%"
             );
+
         }
 
-        /*
-         * Producto SIN IVA.
-         *
-         * El porcentaje debe ser exactamente 0.
-         */
-        if (!aplicaIva
-                && ivaPorcentaje.compareTo(
-                BigDecimal.ZERO) != 0) {
 
-            throw new IllegalArgumentException(
-                    "Un producto sin IVA debe tener porcentaje 0"
-            );
-        }
 
         /*
-         * Producto CON IVA.
-         *
-         * El porcentaje debe ser mayor que 0.
+         * Producto sin IVA.
          */
-        if (aplicaIva
-                && ivaPorcentaje.compareTo(
-                BigDecimal.ZERO) <= 0) {
+        if(!aplica
+                && porcentaje.compareTo(
+                BigDecimal.ZERO)!=0){
+
 
             throw new IllegalArgumentException(
-                    "Un producto con IVA debe tener un porcentaje mayor que 0"
+                    "Producto sin IVA debe tener porcentaje 0"
             );
+
         }
+
+
+
+        /*
+         * Producto con IVA.
+         */
+        if(aplica
+                && porcentaje.compareTo(
+                BigDecimal.ZERO)<=0){
+
+
+            throw new IllegalArgumentException(
+                    "Producto con IVA requiere porcentaje"
+            );
+
+        }
+
+
     }
 
+
+
+
     /**
-     * Valida un monto que no puede ser negativo.
+     * Valida valores monetarios.
      */
-    private void validarMontoNoNegativo(
+    private void validarMonto(
             BigDecimal monto,
-            String mensaje) {
+            String mensaje){
 
-        if (monto == null) {
 
-            throw new IllegalArgumentException(
-                    mensaje
-            );
-        }
-
-        if (monto.compareTo(
-                BigDecimal.ZERO) < 0) {
+        if(monto==null){
 
             throw new IllegalArgumentException(
                     mensaje
             );
+
         }
+
+
+
+        if(monto.compareTo(
+                BigDecimal.ZERO)<0){
+
+
+            throw new IllegalArgumentException(
+                    mensaje
+            );
+
+        }
+
     }
 
+
+
+
+
     /**
-     * Valida un identificador.
+     * Valida IDs.
      */
     private void validarId(
             Long id,
-            String mensaje) {
+            String mensaje){
 
-        if (id == null || id <= 0) {
+
+        if(id==null || id<=0){
+
 
             throw new IllegalArgumentException(
                     mensaje
             );
+
         }
+
     }
+
 
 }

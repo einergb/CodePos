@@ -7,19 +7,20 @@ import java.sql.SQLException;
 public class ConexionBD {
 
     private static final String HOST =
-            System.getenv("DB_HOST");
+            obtener("DB_HOST");
 
     private static final String PORT =
-            System.getenv("DB_PORT");
+            obtener("DB_PORT");
 
     private static final String DATABASE =
-            System.getenv("DB_NAME");
+            obtener("DB_NAME");
 
     private static final String USER =
-            System.getenv("DB_USER");
+            obtener("DB_USER");
 
     private static final String PASSWORD =
-            System.getenv("DB_PASSWORD");
+            obtener("DB_PASSWORD");
+
 
     private static final String URL =
             "jdbc:postgresql://"
@@ -29,16 +30,39 @@ public class ConexionBD {
                     + "/"
                     + DATABASE;
 
+
     private ConexionBD() {
     }
 
+
     public static Connection conectar()
             throws SQLException {
+
 
         return DriverManager.getConnection(
                 URL,
                 USER,
                 PASSWORD
         );
+    }
+
+
+
+    private static String obtener(String nombre){
+
+        String valor =
+                System.getenv(nombre);
+
+
+        if(valor == null || valor.isBlank()){
+
+            throw new IllegalStateException(
+                    "Variable de entorno faltante: "
+                            + nombre
+            );
+        }
+
+
+        return valor;
     }
 }

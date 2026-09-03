@@ -9,20 +9,30 @@ public class ProveedorService {
 
     private final ProveedorDAO proveedorDAO;
 
+
     public ProveedorService() {
-        this.proveedorDAO = new ProveedorDAO();
+
+        this.proveedorDAO =
+                new ProveedorDAO();
     }
 
+
     /**
-     * Consulta un proveedor perteneciente
-     * a una empresa.
+     * Busca un proveedor por empresa.
      */
     public Proveedor consultar(
             Long empresaId,
             Long proveedorId) {
 
-        validarEmpresaId(empresaId);
-        validarProveedorId(proveedorId);
+
+        validarEmpresaId(
+                empresaId
+        );
+
+        validarProveedorId(
+                proveedorId
+        );
+
 
         Proveedor proveedor =
                 proveedorDAO.buscarPorId(
@@ -30,135 +40,253 @@ public class ProveedorService {
                         proveedorId
                 );
 
+
         if (proveedor == null) {
+
             throw new IllegalArgumentException(
-                    "No existe el proveedor indicado"
+                    "El proveedor no existe"
             );
         }
+
 
         return proveedor;
     }
 
+
+
     /**
-     * Lista los proveedores de una empresa.
+     * Lista proveedores activos
+     * pertenecientes a una empresa.
      */
     public List<Proveedor> listar(
             Long empresaId) {
 
-        validarEmpresaId(empresaId);
+
+        validarEmpresaId(
+                empresaId
+        );
+
 
         return proveedorDAO.listarPorEmpresa(
                 empresaId
         );
     }
 
+
+
+
     /**
-     * Crea un nuevo proveedor.
+     * Crea un proveedor.
      */
     public Long crear(
             Proveedor proveedor) {
 
-        validarProveedor(proveedor);
+
+        validarProveedor(
+                proveedor
+        );
+
 
         return proveedorDAO.crear(
                 proveedor
         );
     }
 
+
+
+
+
     /**
-     * Valida los datos principales del proveedor.
+     * Validaciones del proveedor.
      */
     private void validarProveedor(
             Proveedor proveedor) {
 
+
         if (proveedor == null) {
+
             throw new IllegalArgumentException(
                     "El proveedor es obligatorio"
             );
         }
 
+
         validarEmpresaId(
                 proveedor.getEmpresaId()
         );
 
-        if (proveedor.getNombre() == null ||
-                proveedor.getNombre().isBlank()) {
+
+
+        if (proveedor.getNombre() == null
+                || proveedor.getNombre().isBlank()) {
+
 
             throw new IllegalArgumentException(
                     "El nombre del proveedor es obligatorio"
             );
         }
 
+
+
         String nombre =
-                proveedor.getNombre().trim();
+                proveedor.getNombre()
+                        .trim();
+
+
 
         if (nombre.length() < 2) {
+
             throw new IllegalArgumentException(
-                    "El nombre del proveedor debe tener al menos 2 caracteres"
+                    "El nombre del proveedor debe tener mínimo 2 caracteres"
             );
         }
 
-        proveedor.setNombre(nombre);
 
-        if (proveedor.getIdentificacion() != null) {
 
-            String identificacion =
-                    proveedor.getIdentificacion().trim();
+        proveedor.setNombre(
+                nombre
+        );
 
-            if (identificacion.isBlank()) {
-                proveedor.setIdentificacion(null);
-            } else {
-                proveedor.setIdentificacion(
-                        identificacion
-                );
-            }
-        }
 
-        if (proveedor.getTelefono() != null) {
 
-            String telefono =
-                    proveedor.getTelefono().trim();
+        limpiarTextoOpcional(
+                proveedor,
+                "identificacion"
+        );
 
-            if (telefono.isBlank()) {
-                proveedor.setTelefono(null);
-            } else {
-                proveedor.setTelefono(telefono);
-            }
-        }
+        limpiarTextoOpcional(
+                proveedor,
+                "telefono"
+        );
 
-        if (proveedor.getCorreo() != null) {
+        limpiarTextoOpcional(
+                proveedor,
+                "correo"
+        );
 
-            String correo =
-                    proveedor.getCorreo().trim();
+        limpiarTextoOpcional(
+                proveedor,
+                "direccion"
+        );
 
-            if (correo.isBlank()) {
-                proveedor.setCorreo(null);
-            } else {
-                proveedor.setCorreo(correo);
-            }
-        }
 
-        if (proveedor.getDireccion() != null) {
+        validarCorreo(
+                proveedor.getCorreo()
+        );
+    }
 
-            String direccion =
-                    proveedor.getDireccion().trim();
 
-            if (direccion.isBlank()) {
-                proveedor.setDireccion(null);
-            } else {
-                proveedor.setDireccion(direccion);
-            }
+
+
+
+    /**
+     * Limpia campos opcionales.
+     */
+    private void limpiarTextoOpcional(
+            Proveedor proveedor,
+            String campo) {
+
+
+        switch (campo) {
+
+
+            case "identificacion":
+
+                if (proveedor.getIdentificacion() != null) {
+
+                    proveedor.setIdentificacion(
+                            proveedor.getIdentificacion()
+                                    .trim()
+                    );
+                }
+
+                break;
+
+
+
+            case "telefono":
+
+                if (proveedor.getTelefono() != null) {
+
+                    proveedor.setTelefono(
+                            proveedor.getTelefono()
+                                    .trim()
+                    );
+                }
+
+                break;
+
+
+
+            case "correo":
+
+                if (proveedor.getCorreo() != null) {
+
+                    proveedor.setCorreo(
+                            proveedor.getCorreo()
+                                    .trim()
+                    );
+                }
+
+                break;
+
+
+
+            case "direccion":
+
+                if (proveedor.getDireccion() != null) {
+
+                    proveedor.setDireccion(
+                            proveedor.getDireccion()
+                                    .trim()
+                    );
+                }
+
+                break;
         }
     }
 
+
+
+
+
     /**
-     * Valida el ID de la empresa.
+     * Validación básica correo.
      */
+    private void validarCorreo(
+            String correo) {
+
+
+        if (correo == null
+                || correo.isBlank()) {
+
+            return;
+        }
+
+
+
+        if (!correo.matches(
+                "^[A-Za-z0-9+_.-]+@(.+)$"
+        )) {
+
+
+            throw new IllegalArgumentException(
+                    "El correo del proveedor no tiene formato válido"
+            );
+        }
+    }
+
+
+
+
+
     private void validarEmpresaId(
             Long empresaId) {
 
-        if (empresaId == null ||
-                empresaId <= 0) {
+
+        if (empresaId == null
+                || empresaId <= 0) {
+
 
             throw new IllegalArgumentException(
                     "Empresa inválida"
@@ -166,18 +294,21 @@ public class ProveedorService {
         }
     }
 
-    /**
-     * Valida el ID del proveedor.
-     */
+
+
+
     private void validarProveedorId(
             Long proveedorId) {
 
-        if (proveedorId == null ||
-                proveedorId <= 0) {
+
+        if (proveedorId == null
+                || proveedorId <= 0) {
+
 
             throw new IllegalArgumentException(
                     "Proveedor inválido"
             );
         }
     }
+
 }

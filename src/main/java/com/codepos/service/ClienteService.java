@@ -9,149 +9,298 @@ public class ClienteService {
 
     private final ClienteDAO clienteDAO;
 
+
     public ClienteService() {
-        this.clienteDAO = new ClienteDAO();
+
+        this.clienteDAO =
+                new ClienteDAO();
+
     }
 
+
+
     /**
-     * Busca un cliente por su ID y empresa.
+     * Busca un cliente por empresa e ID.
      */
     public Cliente buscarPorId(
             Long empresaId,
             Long clienteId) {
 
+
         validarId(
                 empresaId,
                 "La empresa es obligatoria"
         );
+
 
         validarId(
                 clienteId,
                 "El ID del cliente es obligatorio"
         );
 
-        return clienteDAO.buscarPorId(
-                empresaId,
-                clienteId
-        );
+
+
+        Cliente cliente =
+                clienteDAO.buscarPorId(
+                        empresaId,
+                        clienteId
+                );
+
+
+
+        if(cliente == null){
+
+            throw new IllegalArgumentException(
+                    "No existe el cliente indicado"
+            );
+
+        }
+
+
+
+        if(!Boolean.TRUE.equals(
+                cliente.getActivo()
+        )){
+
+            throw new IllegalStateException(
+                    "El cliente está inactivo"
+            );
+
+        }
+
+
+
+        return cliente;
+
     }
 
+
+
+
     /**
-     * Lista los clientes de una empresa.
+     * Lista clientes de una empresa.
      */
     public List<Cliente> listarPorEmpresa(
             Long empresaId) {
+
 
         validarId(
                 empresaId,
                 "La empresa es obligatoria"
         );
 
+
         return clienteDAO.listarPorEmpresa(
                 empresaId
         );
+
     }
+
+
+
+
 
     /**
      * Crea un nuevo cliente.
      */
-    public Long crear(Cliente cliente) {
+    public Long crear(
+            Cliente cliente) {
 
-        validarCliente(cliente);
 
-        return clienteDAO.crear(cliente);
+        validarCliente(
+                cliente
+        );
+
+
+        return clienteDAO.crear(
+                cliente
+        );
+
     }
 
-    /**
-     * Valida los datos principales del cliente.
-     */
-    private void validarCliente(Cliente cliente) {
 
-        if (cliente == null) {
+
+
+
+    /**
+     * Validaciones principales.
+     */
+    private void validarCliente(
+            Cliente cliente) {
+
+
+
+        if(cliente == null){
 
             throw new IllegalArgumentException(
                     "El cliente es obligatorio"
             );
+
         }
+
+
 
         validarId(
                 cliente.getEmpresaId(),
                 "La empresa es obligatoria"
         );
 
-        if (cliente.getNombre() == null
-                || cliente.getNombre().trim().isEmpty()) {
+
+
+
+        if(cliente.getNombre()==null
+                || cliente.getNombre().isBlank()){
+
 
             throw new IllegalArgumentException(
                     "El nombre del cliente es obligatorio"
             );
+
         }
+
+
+
+        String nombre =
+                cliente.getNombre()
+                        .trim();
+
+
+
+        if(nombre.length()<2){
+
+            throw new IllegalArgumentException(
+                    "El nombre debe tener mínimo 2 caracteres"
+            );
+
+        }
+
+
+
+        cliente.setNombre(
+                nombre
+        );
+
+
+
+
+        if(cliente.getIdentificacion()!=null){
+
+            String valor =
+                    cliente.getIdentificacion()
+                            .trim();
+
+
+            cliente.setIdentificacion(
+                    valor.isBlank()
+                            ? null
+                            : valor
+            );
+
+        }
+
+
+
+
+        if(cliente.getTelefono()!=null){
+
+            String valor =
+                    cliente.getTelefono()
+                            .trim();
+
+
+            cliente.setTelefono(
+                    valor.isBlank()
+                            ? null
+                            : valor
+            );
+
+        }
+
+
+
+
+        if(cliente.getCorreo()!=null){
+
+            String correo =
+                    cliente.getCorreo()
+                            .trim();
+
+
+            if(correo.isBlank()){
+
+                cliente.setCorreo(null);
+
+            }
+            else if(!correo.contains("@")){
+
+
+                throw new IllegalArgumentException(
+                        "El correo no tiene un formato válido"
+                );
+
+            }
+            else{
+
+                cliente.setCorreo(
+                        correo
+                );
+
+            }
+
+        }
+
+
+
+
+        if(cliente.getDireccion()!=null){
+
+            String valor =
+                    cliente.getDireccion()
+                            .trim();
+
+
+            cliente.setDireccion(
+                    valor.isBlank()
+                            ? null
+                            : valor
+            );
+
+        }
+
+
+
 
         /*
-         * Los siguientes campos son opcionales:
-         *
-         * - identificación
-         * - teléfono
-         * - correo
-         * - dirección
-         *
-         * Si son enviados, no pueden estar vacíos.
+         * Cliente nuevo activo por defecto.
          */
+        if(cliente.getActivo()==null){
 
-        if (cliente.getIdentificacion() != null
-                && cliente.getIdentificacion()
-                .trim()
-                .isEmpty()) {
+            cliente.setActivo(true);
 
-            throw new IllegalArgumentException(
-                    "La identificación no puede estar vacía"
-            );
         }
 
-        if (cliente.getTelefono() != null
-                && cliente.getTelefono()
-                .trim()
-                .isEmpty()) {
-
-            throw new IllegalArgumentException(
-                    "El teléfono no puede estar vacío"
-            );
-        }
-
-        if (cliente.getCorreo() != null
-                && cliente.getCorreo()
-                .trim()
-                .isEmpty()) {
-
-            throw new IllegalArgumentException(
-                    "El correo no puede estar vacío"
-            );
-        }
-
-        if (cliente.getDireccion() != null
-                && cliente.getDireccion()
-                .trim()
-                .isEmpty()) {
-
-            throw new IllegalArgumentException(
-                    "La dirección no puede estar vacía"
-            );
-        }
     }
 
+
+
+
+
     /**
-     * Valida un identificador.
+     * Valida IDs.
      */
     private void validarId(
             Long id,
             String mensaje) {
 
-        if (id == null || id <= 0) {
+
+        if(id==null || id<=0){
 
             throw new IllegalArgumentException(
                     mensaje
             );
+
         }
+
     }
 
 }

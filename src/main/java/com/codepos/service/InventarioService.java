@@ -2,6 +2,7 @@ package com.codepos.service;
 
 import com.codepos.dao.InventarioDAO;
 import com.codepos.dao.MovimientoInventarioDAO;
+import com.codepos.enums.TipoMovimientoInventario;
 import com.codepos.model.Inventario;
 
 import java.math.BigDecimal;
@@ -43,12 +44,16 @@ public class InventarioService {
                 );
 
         if (inventario == null) {
+
             throw new IllegalArgumentException(
                     "No existe inventario para el producto indicado"
             );
         }
 
-        if (!Boolean.TRUE.equals(inventario.getActivo())) {
+        if (!Boolean.TRUE.equals(
+                inventario.getActivo()
+        )) {
+
             throw new IllegalStateException(
                     "El inventario del producto está inactivo"
             );
@@ -60,20 +65,36 @@ public class InventarioService {
     /**
      * Registra un movimiento de inventario.
      *
-     * La operación es delegada al DAO,
-     * que utiliza la función PostgreSQL
-     * registrar_movimiento_inventario().
+     * El tipo de movimiento está controlado mediante
+     * TipoMovimientoInventario.
+     *
+     * Esto evita utilizar Strings libres como:
+     *
+     * "VENTA"
+     * "venta"
+     * "VENTAS"
+     *
+     * La operación es delegada al DAO, que utiliza
+     * la función PostgreSQL:
+     *
+     * registrar_movimiento_inventario()
      */
     public Long registrarMovimiento(
             Long empresaId,
             Long sucursalId,
             Long productoId,
-            String tipo,
+            TipoMovimientoInventario tipo,
             BigDecimal cantidad,
             String motivo,
             String referenciaTipo,
             Long referenciaId,
             Integer authUserId) {
+
+        /*
+         * =============================================
+         * VALIDAR IDENTIFICADORES
+         * =============================================
+         */
 
         validarIds(
                 empresaId,
@@ -81,25 +102,68 @@ public class InventarioService {
                 productoId
         );
 
-        if (tipo == null || tipo.isBlank()) {
+        /*
+         * =============================================
+         * VALIDAR TIPO DE MOVIMIENTO
+         * =============================================
+         */
+
+        if (tipo == null) {
+
             throw new IllegalArgumentException(
                     "El tipo de movimiento es obligatorio"
             );
         }
 
-        if (cantidad == null ||
-                cantidad.compareTo(BigDecimal.ZERO) <= 0) {
+        /*
+         * =============================================
+         * VALIDAR CANTIDAD
+         * =============================================
+         */
+
+        if (cantidad == null
+                || cantidad.compareTo(
+                BigDecimal.ZERO
+        ) <= 0) {
 
             throw new IllegalArgumentException(
                     "La cantidad debe ser mayor que cero"
             );
         }
 
-        if (motivo == null || motivo.isBlank()) {
+        /*
+         * =============================================
+         * VALIDAR MOTIVO
+         * =============================================
+         */
+
+        if (motivo == null
+                || motivo.isBlank()) {
+
             throw new IllegalArgumentException(
                     "El motivo es obligatorio"
             );
         }
+
+        /*
+         * =============================================
+         * DELEGAR AL DAO
+         * =============================================
+         *
+         * El DAO ejecuta la función PostgreSQL:
+         *
+         * registrar_movimiento_inventario()
+         *
+         * PostgreSQL se encarga de:
+         *
+         * - Bloquear el inventario.
+         * - Consultar stock actual.
+         * - Calcular stock anterior.
+         * - Calcular stock posterior.
+         * - Validar stock negativo.
+         * - Actualizar inventario.
+         * - Registrar movimiento.
+         */
 
         return movimientoDAO.registrarMovimiento(
                 empresaId,
@@ -122,19 +186,25 @@ public class InventarioService {
             Long sucursalId,
             Long productoId) {
 
-        if (empresaId == null || empresaId <= 0) {
+        if (empresaId == null
+                || empresaId <= 0) {
+
             throw new IllegalArgumentException(
                     "Empresa inválida"
             );
         }
 
-        if (sucursalId == null || sucursalId <= 0) {
+        if (sucursalId == null
+                || sucursalId <= 0) {
+
             throw new IllegalArgumentException(
                     "Sucursal inválida"
             );
         }
 
-        if (productoId == null || productoId <= 0) {
+        if (productoId == null
+                || productoId <= 0) {
+
             throw new IllegalArgumentException(
                     "Producto inválido"
             );

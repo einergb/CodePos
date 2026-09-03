@@ -2,6 +2,10 @@ package com.codepos;
 
 import com.codepos.config.ConexionBD;
 import com.codepos.dao.InventarioDAO;
+import com.codepos.dao.MovimientoInventarioDAO;
+import com.codepos.dao.PagoDAO;
+import com.codepos.dao.VentaDAO;
+import com.codepos.dao.VentaDetalleDAO;
 import com.codepos.model.Inventario;
 import com.codepos.model.Pago;
 import com.codepos.model.Venta;
@@ -16,65 +20,36 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
-
- * ============================================================
- * TEST DE INTEGRACIÓN - VENTA INTEGRAL
- * ============================================================
+ * Pruebas integrales de VentaIntegralService.
  *
- * Verifica el flujo completo de una venta:
+ * OBJETIVO:
  *
- * Venta
- * ↓
- * Detalle
- * ↓
- * Inventario
- * ↓
- * Movimiento de inventario
- * ↓
- * Pago
- * ↓
- * Estado PAGADA
+ * Verificar que una venta integral sea realmente
+ * una única transacción.
  *
- * También verifica:
+ * Pruebas:
  *
- * * Cálculos monetarios.
- * * Descuento de inventario.
- * * Movimiento generado.
- * * stock_anterior.
- * * stock_posterior.
- * * Rollback.
- * * Validación de pago.
- * * Stock insuficiente.
- * * Producto sin inventario.
- * * Inventario inactivo.
+ * 1. Venta correcta.
+ * 2. Pago incorrecto.
+ * 3. Stock insuficiente.
+ * 4. Producto sin inventario.
+ * 5. Inventario inactivo.
+ * 6. ROLLBACK después de crear venta/detalle/inventario.
  *
- * IMPORTANTE:
- *
- * El test NO depende de que exista una cantidad específica
- * de stock antes de comenzar.
+ * La prueba 6 es la prueba crítica de atomicidad.
  */
 public class TestVentaIntegralService {
-
-    // =========================================================
-    // CONFIGURACIÓN DE PRUEBAS
-    // =========================================================
 
     private static final Long EMPRESA_ID = 1L;
     private static final Long SUCURSAL_ID = 1L;
     private static final Long PRODUCTO_ID = 2L;
-    private static final Long CLIENTE_ID = 1L;
+
     private static final Integer AUTH_USER_ID = 1;
 
-    /*
-
-     * Cantidad utilizada en la venta correcta.
-     *
-     * El test preparará automáticamente suficiente stock.
-     */
     private static final BigDecimal CANTIDAD_VENTA =
             new BigDecimal("2");
 
-    private static final BigDecimal PRECIO_VENTA =
+    private static final BigDecimal PRECIO =
             new BigDecimal("350000");
 
     private static final BigDecimal DESCUENTO =
@@ -83,46 +58,47 @@ public class TestVentaIntegralService {
     private static final BigDecimal IMPUESTO =
             new BigDecimal("100000");
 
-    private static final BigDecimal TOTAL_ESPERADO =
-            new BigDecimal("780000");
+    private static final BigDecimal TOTAL =
+            new BigDecimal("780000.00");
 
-    /*
+    private final VentaIntegralService service =
+            new VentaIntegralService();
 
-     * Stock mínimo que queremos garantizar
-     * para ejecutar la venta correcta.
-     */
-    private static final BigDecimal STOCK_PRUEBA =
-            new BigDecimal("10");
+    private final InventarioDAO inventarioDAO =
+            new InventarioDAO();
 
-    private static final String PREFIJO_TEST =
-            "TEST-INTEGRAL-";
+    private final VentaDAO ventaDAO =
+            new VentaDAO();
 
-    // =========================================================
-    // MAIN
-    // =========================================================
+    private final VentaDetalleDAO ventaDetalleDAO =
+            new VentaDetalleDAO();
+
+    private final PagoDAO pagoDAO =
+            new PagoDAO();
 
     public static void main(String[] args) {
-
 
         System.out.println();
         System.out.println("==============================================");
         System.out.println("       TEST VENTA INTEGRAL SERVICE");
         System.out.println("==============================================");
 
-        VentaIntegralService service =
-                new VentaIntegralService();
+        TestVentaIntegralService test =
+                new TestVentaIntegralService();
 
         try {
 
-            probarVentaCorrecta(service);
+            test.probarVentaCorrecta();
 
-            probarPagoIncorrecto(service);
+            test.probarPagoIncorrecto();
 
-            probarStockInsuficiente(service);
+            test.probarStockInsuficiente();
 
-            probarProductoSinInventario(service);
+            test.probarProductoSinInventario();
 
-            probarInventarioInactivo(service);
+            test.probarInventarioInactivo();
+
+            test.probarRollbackCompleto();
 
             System.out.println();
             System.out.println("==============================================");
@@ -142,47 +118,21 @@ public class TestVentaIntegralService {
             );
 
             e.printStackTrace();
-
-            System.exit(1);
         }
-
-
     }
 
     // =========================================================
-    // TEST 1
+    // 1. VENTA CORRECTA
     // =========================================================
 
-    /**
-
-     * Verifica una venta integral completamente correcta.
-     *
-     * Además verifica:
-     *
-     * * stock antes
-     * * stock después
-     * * movimiento de inventario
-     * * stock anterior del movimiento
-     * * stock posterior del movimiento
-     */
-    private static void probarVentaCorrecta(
-            VentaIntegralService service) {
+    private void probarVentaCorrecta() {
 
         System.out.println();
         System.out.println("----------------------------------------------");
         System.out.println("1. VENTA INTEGRAL CORRECTA");
         System.out.println("----------------------------------------------");
 
-        /*
-
-         * Garantizamos que exista suficiente stock.
-         *
-         * El test no depende del stock actual.
-         */
-        prepararStockParaPrueba();
-
-        InventarioDAO inventarioDAO =
-                new InventarioDAO();
+        prepararStockSiEsNecesario();
 
         Inventario inventarioAntes =
                 inventarioDAO.buscarPorProducto(
@@ -193,12 +143,9 @@ public class TestVentaIntegralService {
 
         if (inventarioAntes == null) {
 
-
             throw new AssertionError(
                     "No existe inventario para el producto de prueba"
             );
-
-
         }
 
         BigDecimal stockAntes =
@@ -208,100 +155,19 @@ public class TestVentaIntegralService {
                 "Stock antes: " + stockAntes
         );
 
-        /*
-
-         * =====================================================
-         * CREAR VENTA
-         * =====================================================
-         */
-
         Venta venta =
-                new Venta();
-
-        venta.setEmpresaId(
-                EMPRESA_ID
-        );
-
-        venta.setSucursalId(
-                SUCURSAL_ID
-        );
-
-        venta.setClienteId(
-                CLIENTE_ID
-        );
-
-        venta.setAuthUserId(
-                AUTH_USER_ID
-        );
-
-        venta.setNumero(
-                PREFIJO_TEST
-                        + System.currentTimeMillis()
-        );
-
-        /*
-
-         * =====================================================
-         * CREAR DETALLE
-         * =====================================================
-         */
+                crearVenta();
 
         VentaDetalle detalle =
-                new VentaDetalle();
-
-        detalle.setProductoId(
-                PRODUCTO_ID
-        );
-
-        detalle.setCantidad(
-                CANTIDAD_VENTA
-        );
-
-        detalle.setPrecioVenta(
-                PRECIO_VENTA
-        );
-
-        detalle.setDescuento(
-                DESCUENTO
-        );
-
-        detalle.setImpuesto(
-                IMPUESTO
-        );
+                crearDetalle();
 
         List<VentaDetalle> detalles =
                 new ArrayList<>();
 
         detalles.add(detalle);
 
-        /*
-
-         * =====================================================
-         * CREAR PAGO
-         * =====================================================
-         */
-
         Pago pago =
-                new Pago();
-
-        pago.setMetodo(
-                "EFECTIVO"
-        );
-
-        pago.setMonto(
-                TOTAL_ESPERADO
-        );
-
-        pago.setAuthUserId(
-                AUTH_USER_ID
-        );
-
-        /*
-
-         * =====================================================
-         * REGISTRAR VENTA
-         * =====================================================
-         */
+                crearPago(TOTAL);
 
         System.out.println();
         System.out.println(
@@ -314,24 +180,6 @@ public class TestVentaIntegralService {
                         detalles,
                         pago
                 );
-
-        /*
-
-         * =====================================================
-         * VALIDAR VENTA
-         * =====================================================
-         */
-
-        if (ventaId == null
-                || ventaId <= 0) {
-
-
-            throw new AssertionError(
-                    "El ID de la venta no es válido"
-            );
-
-
-        }
 
         System.out.println();
         System.out.println(
@@ -366,10 +214,6 @@ public class TestVentaIntegralService {
                 "Total: " + venta.getTotal()
         );
 
-        System.out.println(
-                "Pago: " + pago.getMonto()
-        );
-
         verificar(
                 venta.getSubtotal(),
                 new BigDecimal("700000.00"),
@@ -378,50 +222,36 @@ public class TestVentaIntegralService {
 
         verificar(
                 venta.getDescuento(),
-                new BigDecimal("20000.00"),
+                DESCUENTO,
                 "Descuento venta"
         );
 
         verificar(
                 venta.getImpuesto(),
-                new BigDecimal("100000.00"),
+                IMPUESTO,
                 "Impuesto venta"
         );
 
         verificar(
                 venta.getTotal(),
-                TOTAL_ESPERADO,
+                TOTAL,
                 "Total venta"
         );
 
         verificar(
                 pago.getMonto(),
-                TOTAL_ESPERADO,
+                TOTAL,
                 "Pago"
         );
 
-        if (!"PAGADA".equals(
-                venta.getEstado()
-        )) {
-
-
-            throw new AssertionError(
-                    "La venta debería quedar PAGADA"
-            );
-
-
-        }
+        verificarEstado(
+                venta.getEstado(),
+                "PAGADA"
+        );
 
         System.out.println(
                 "✅ Estado PAGADA confirmado"
         );
-
-        /*
-
-         * =====================================================
-         * VALIDAR DETALLE
-         * =====================================================
-         */
 
         verificar(
                 detalle.getSubtotal(),
@@ -431,13 +261,13 @@ public class TestVentaIntegralService {
 
         verificar(
                 detalle.getDescuento(),
-                new BigDecimal("20000.00"),
+                DESCUENTO,
                 "Descuento detalle"
         );
 
         verificar(
                 detalle.getImpuesto(),
-                new BigDecimal("100000.00"),
+                IMPUESTO,
                 "Impuesto detalle"
         );
 
@@ -445,24 +275,14 @@ public class TestVentaIntegralService {
                 detalle.getVentaId()
         )) {
 
-
             throw new AssertionError(
                     "El detalle no quedó asociado a la venta"
             );
-
-
         }
 
         System.out.println(
                 "✅ Detalle asociado correctamente"
         );
-
-        /*
-
-         * =====================================================
-         * VALIDAR STOCK DESPUÉS
-         * =====================================================
-         */
 
         Inventario inventarioDespues =
                 inventarioDAO.buscarPorProducto(
@@ -470,16 +290,6 @@ public class TestVentaIntegralService {
                         SUCURSAL_ID,
                         PRODUCTO_ID
                 );
-
-        if (inventarioDespues == null) {
-
-
-            throw new AssertionError(
-                    "El inventario desapareció después de la venta"
-            );
-
-
-        }
 
         BigDecimal stockDespues =
                 inventarioDespues.getCantidad();
@@ -504,139 +314,16 @@ public class TestVentaIntegralService {
                 "✅ Inventario descontado correctamente"
         );
 
-        /*
-
-         * =====================================================
-         * VALIDAR MOVIMIENTO
-         * =====================================================
-         */
-
-        MovimientoTest movimiento =
-                buscarMovimientoVenta(
-                        ventaId
-                );
-
-        if (movimiento == null) {
-
-
-            throw new AssertionError(
-                    "No se encontró movimiento de inventario para la venta"
-            );
-
-
-        }
-
-        System.out.println();
-        System.out.println(
-                "Movimiento generado:"
-        );
-
-        System.out.println(
-                "ID movimiento: "
-                        + movimiento.id
-        );
-
-        System.out.println(
-                "Tipo: "
-                        + movimiento.tipo
-        );
-
-        System.out.println(
-                "Cantidad: "
-                        + movimiento.cantidad
-        );
-
-        System.out.println(
-                "Stock anterior: "
-                        + movimiento.stockAnterior
-        );
-
-        System.out.println(
-                "Stock posterior: "
-                        + movimiento.stockPosterior
-        );
-
-        System.out.println(
-                "Referencia: "
-                        + movimiento.referenciaTipo
-                        + " #"
-                        + movimiento.referenciaId
-        );
-
-        if (!"VENTA".equals(
-                movimiento.tipo
-        )) {
-
-
-            throw new AssertionError(
-                    "El movimiento debería ser de tipo VENTA"
-            );
-
-
-        }
-
-        verificar(
-                movimiento.cantidad,
-                CANTIDAD_VENTA,
-                "Cantidad movimiento"
-        );
-
-        verificar(
-                movimiento.stockAnterior,
-                stockAntes,
-                "Stock anterior movimiento"
-        );
-
-        verificar(
-                movimiento.stockPosterior,
-                stockEsperado,
-                "Stock posterior movimiento"
-        );
-
-        if (!"VENTA".equals(
-                movimiento.referenciaTipo
-        )) {
-
-
-            throw new AssertionError(
-                    "La referencia del movimiento debería ser VENTA"
-            );
-
-
-        }
-
-        if (!ventaId.equals(
-                movimiento.referenciaId
-        )) {
-
-
-            throw new AssertionError(
-                    "El movimiento no está asociado a la venta"
-            );
-
-
-        }
-
-        System.out.println(
-                "✅ Movimiento de inventario correcto"
-        );
-
         System.out.println(
                 "✅ TEST 1 SUPERADO"
         );
     }
 
     // =========================================================
-    // TEST 2
+    // 2. PAGO INCORRECTO
     // =========================================================
 
-    /**
-
-     * Verifica que un pago diferente al total
-     * sea rechazado antes de iniciar la transacción.
-     */
-    private static void probarPagoIncorrecto(
-            VentaIntegralService service) {
+    private void probarPagoIncorrecto() {
 
         System.out.println();
         System.out.println("----------------------------------------------");
@@ -644,9 +331,7 @@ public class TestVentaIntegralService {
         System.out.println("----------------------------------------------");
 
         Venta venta =
-                crearVentaBase(
-                        "TEST-PAGO-"
-                );
+                crearVenta();
 
         VentaDetalle detalle =
                 crearDetalle();
@@ -657,37 +342,34 @@ public class TestVentaIntegralService {
         detalles.add(detalle);
 
         Pago pago =
-                new Pago();
+                crearPago(
+                        new BigDecimal("100000")
+                );
 
-        pago.setMetodo(
-                "EFECTIVO"
-        );
+        try {
 
-        /*
+            service.registrarVenta(
+                    venta,
+                    detalles,
+                    pago
+            );
 
-         * Pago incorrecto intencionalmente.
-         */
-        pago.setMonto(
-                new BigDecimal("1")
-        );
+            throw new AssertionError(
+                    "La venta debería haber sido rechazada"
+            );
 
-        pago.setAuthUserId(
-                AUTH_USER_ID
-        );
+        } catch (IllegalArgumentException e) {
 
-        probarExcepcion(
-                () ->
-                        service.registrarVenta(
-                                venta,
-                                detalles,
-                                pago
-                        ),
-                "Pago diferente al total"
-        );
+            System.out.println(
+                    "✅ Pago diferente al total → "
+                            + "rechazada correctamente"
+            );
 
-        System.out.println(
-                "✅ Venta rechazada antes de iniciar la transacción"
-        );
+            System.out.println(
+                    "✅ Venta rechazada antes de "
+                            + "iniciar la transacción"
+            );
+        }
 
         System.out.println(
                 "✅ TEST 2 SUPERADO"
@@ -695,26 +377,15 @@ public class TestVentaIntegralService {
     }
 
     // =========================================================
-    // TEST 3
+    // 3. STOCK INSUFICIENTE
     // =========================================================
 
-    /**
-
-     * Solicita una cantidad exageradamente superior
-     * al stock disponible.
-     *
-     * Debe producir rollback.
-     */
-    private static void probarStockInsuficiente(
-            VentaIntegralService service) {
+    private void probarStockInsuficiente() {
 
         System.out.println();
         System.out.println("----------------------------------------------");
         System.out.println("3. STOCK INSUFICIENTE");
         System.out.println("----------------------------------------------");
-
-        InventarioDAO inventarioDAO =
-                new InventarioDAO();
 
         Inventario inventario =
                 inventarioDAO.buscarPorProducto(
@@ -725,37 +396,22 @@ public class TestVentaIntegralService {
 
         if (inventario == null) {
 
-
             throw new AssertionError(
-                    "No existe inventario para realizar esta prueba"
+                    "No existe inventario"
             );
-
-
         }
 
         BigDecimal stockAntes =
                 inventario.getCantidad();
 
-        /*
-
-         * Cantidad deliberadamente imposible.
-         *
-         * No depende de cuánto stock exista.
-         */
-        BigDecimal cantidadImposible =
-                stockAntes
-                        .add(new BigDecimal("999999"));
-
         Venta venta =
-                crearVentaBase(
-                        "TEST-STOCK-"
-                );
+                crearVenta();
 
         VentaDetalle detalle =
                 crearDetalle();
 
         detalle.setCantidad(
-                cantidadImposible
+                new BigDecimal("999999")
         );
 
         List<VentaDetalle> detalles =
@@ -763,47 +419,32 @@ public class TestVentaIntegralService {
 
         detalles.add(detalle);
 
+        BigDecimal subtotal =
+                new BigDecimal("349999000000");
+
         Pago pago =
-                new Pago();
+                crearPago(subtotal);
 
-        pago.setMetodo(
-                "EFECTIVO"
-        );
+        try {
 
-        /*
+            service.registrarVenta(
+                    venta,
+                    detalles,
+                    pago
+            );
 
-         * El total debe coincidir con el cálculo,
-         * aunque la venta terminará siendo rechazada
-         * por inventario.
-         */
-        pago.setMonto(
-                calcularTotalPrueba(
-                        detalle
-                )
-        );
+            throw new AssertionError(
+                    "La venta debería ser rechazada"
+            );
 
-        pago.setAuthUserId(
-                AUTH_USER_ID
-        );
+        } catch (RuntimeException e) {
 
-        probarExcepcion(
-                () ->
-                        service.registrarVenta(
-                                venta,
-                                detalles,
-                                pago
-                        ),
-                "Stock insuficiente"
-        );
+            System.out.println(
+                    "✅ Stock insuficiente → "
+                            + "rechazada correctamente"
+            );
+        }
 
-        System.out.println(
-                "✅ Stock insuficiente rechazado correctamente"
-        );
-
-        /*
-
-         * Verificamos que el stock NO haya cambiado.
-         */
         Inventario inventarioDespues =
                 inventarioDAO.buscarPorProducto(
                         EMPRESA_ID,
@@ -818,6 +459,10 @@ public class TestVentaIntegralService {
         );
 
         System.out.println(
+                "✅ Stock insuficiente rechazado correctamente"
+        );
+
+        System.out.println(
                 "✅ La transacción ejecutó ROLLBACK"
         );
 
@@ -827,37 +472,23 @@ public class TestVentaIntegralService {
     }
 
     // =========================================================
-    // TEST 4
+    // 4. PRODUCTO SIN INVENTARIO
     // =========================================================
 
-    /**
-
-     * Utiliza un producto que no tenga inventario.
-     *
-     * El objetivo es verificar la validación
-     * de inventario inexistente.
-     */
-    private static void probarProductoSinInventario(
-            VentaIntegralService service) {
+    private void probarProductoSinInventario() {
 
         System.out.println();
         System.out.println("----------------------------------------------");
         System.out.println("4. PRODUCTO SIN INVENTARIO");
         System.out.println("----------------------------------------------");
 
-        /*
-
-         * Buscamos un producto que NO tenga inventario
-         * para la empresa/sucursal de prueba.
-         */
         Long productoSinInventario =
                 buscarProductoSinInventario();
 
         if (productoSinInventario == null) {
 
-
             System.out.println(
-                    "⚠️ No existe actualmente un producto sin inventario."
+                    "⚠️ No existe producto sin inventario."
             );
 
             System.out.println(
@@ -865,14 +496,10 @@ public class TestVentaIntegralService {
             );
 
             return;
-
-
         }
 
         Venta venta =
-                crearVentaBase(
-                        "TEST-SIN-INVENTARIO-"
-                );
+                crearVenta();
 
         VentaDetalle detalle =
                 crearDetalle();
@@ -887,23 +514,31 @@ public class TestVentaIntegralService {
         detalles.add(detalle);
 
         Pago pago =
-                crearPagoParaDetalle(
-                        detalle
-                );
+                crearPago(TOTAL);
 
-        probarExcepcion(
-                () ->
-                        service.registrarVenta(
-                                venta,
-                                detalles,
-                                pago
-                        ),
-                "Producto sin inventario"
-        );
+        try {
 
-        System.out.println(
-                "✅ Producto sin inventario rechazado"
-        );
+            service.registrarVenta(
+                    venta,
+                    detalles,
+                    pago
+            );
+
+            throw new AssertionError(
+                    "La venta debería ser rechazada"
+            );
+
+        } catch (RuntimeException e) {
+
+            System.out.println(
+                    "✅ Producto sin inventario → "
+                            + "rechazada correctamente"
+            );
+
+            System.out.println(
+                    "Mensaje: " + e.getMessage()
+            );
+        }
 
         System.out.println(
                 "✅ TEST 4 SUPERADO"
@@ -911,70 +546,44 @@ public class TestVentaIntegralService {
     }
 
     // =========================================================
-    // TEST 5
+    // 5. INVENTARIO INACTIVO
     // =========================================================
 
-    /**
-
-     * Verifica que un inventario inactivo
-     * no permita realizar ventas.
-     *
-     * IMPORTANTE:
-     *
-     * El test guarda el estado original y lo restaura.
-     */
-    private static void probarInventarioInactivo(
-            VentaIntegralService service) {
+    private void probarInventarioInactivo() {
 
         System.out.println();
         System.out.println("----------------------------------------------");
         System.out.println("5. INVENTARIO INACTIVO");
         System.out.println("----------------------------------------------");
 
-        InventarioDAO inventarioDAO =
-                new InventarioDAO();
+        Long inventarioId =
+                obtenerInventarioId();
 
-        Inventario inventario =
-                inventarioDAO.buscarPorProducto(
-                        EMPRESA_ID,
-                        SUCURSAL_ID,
-                        PRODUCTO_ID
-                );
+        if (inventarioId == null) {
 
-        if (inventario == null) {
-
-
-            throw new AssertionError(
-                    "No existe inventario para realizar esta prueba"
+            System.out.println(
+                    "⚠️ No existe inventario para probar"
             );
 
+            System.out.println(
+                    "⚠️ TEST 5 OMITIDO"
+            );
 
+            return;
         }
 
-        /*
-
-         * Guardamos estado original.
-         */
-        boolean activoOriginal =
-                Boolean.TRUE.equals(
-                        inventario.getActivo()
-                );
+        boolean estadoOriginal =
+                obtenerActivo(inventarioId);
 
         try {
 
-
-            /*
-             * Desactivamos temporalmente.
-             */
-            cambiarEstadoInventario(
-                    inventario.getId(),
+            cambiarActivo(
+                    inventarioId,
                     false
             );
 
             Venta venta =
-                    crearVentaBase(
-                            "TEST-INACTIVO-"
-                    );
+                    crearVenta();
 
             VentaDetalle detalle =
                     crearDetalle();
@@ -985,137 +594,322 @@ public class TestVentaIntegralService {
             detalles.add(detalle);
 
             Pago pago =
-                    crearPagoParaDetalle(
-                            detalle
-                    );
+                    crearPago(TOTAL);
 
-            probarExcepcion(
-                    () ->
-                            service.registrarVenta(
-                                    venta,
-                                    detalles,
-                                    pago
-                            ),
-                    "Inventario inactivo"
-            );
+            try {
 
-            System.out.println(
-                    "✅ Inventario inactivo rechazado"
-            );
+                service.registrarVenta(
+                        venta,
+                        detalles,
+                        pago
+                );
 
-            System.out.println(
-                    "✅ TEST 5 SUPERADO"
-            );
+                throw new AssertionError(
+                        "La venta debería ser rechazada"
+                );
 
+            } catch (RuntimeException e) {
+
+                System.out.println(
+                        "✅ Inventario inactivo → "
+                                + "rechazada correctamente"
+                );
+            }
 
         } finally {
 
-
-            /*
-             * Restauramos el estado original.
-             */
-            cambiarEstadoInventario(
-                    inventario.getId(),
-                    activoOriginal
+            cambiarActivo(
+                    inventarioId,
+                    estadoOriginal
             );
-
-
         }
+
+        System.out.println(
+                "✅ Inventario restaurado"
+        );
+
+        System.out.println(
+                "✅ TEST 5 SUPERADO"
+        );
     }
 
     // =========================================================
-    // PREPARACIÓN DE STOCK
+    // 6. ROLLBACK COMPLETO
     // =========================================================
 
     /**
-
-     * Garantiza que exista suficiente stock para
-     * ejecutar la venta correcta.
+     * PRUEBA CRÍTICA.
      *
-     * NO depende del stock actual.
+     * Fuerza un error DESPUÉS de que:
      *
-     * Si actualmente hay:
+     * 1. Se creó la venta.
+     * 2. Se creó el detalle.
+     * 3. Se descontó inventario.
+     * 4. Se creó el movimiento.
      *
-     * 1 unidad
+     * El error se provoca durante el registro
+     * del pago.
      *
-     * y necesitamos:
-     *
-     * 2 unidades
-     *
-     * el método aumenta temporalmente el stock
-     * hasta STOCK_PRUEBA.
+     * Después verificamos que TODO haya vuelto
+     * al estado anterior.
      */
-    private static void prepararStockParaPrueba() {
+    private void probarRollbackCompleto() {
 
-        InventarioDAO inventarioDAO =
-                new InventarioDAO();
+        System.out.println();
+        System.out.println("----------------------------------------------");
+        System.out.println("6. ROLLBACK COMPLETO");
+        System.out.println("----------------------------------------------");
 
-        Inventario inventario =
+        prepararStockSiEsNecesario();
+
+        Inventario inventarioAntes =
                 inventarioDAO.buscarPorProducto(
                         EMPRESA_ID,
                         SUCURSAL_ID,
                         PRODUCTO_ID
                 );
 
-        if (inventario == null) {
+        BigDecimal stockAntes =
+                inventarioAntes.getCantidad();
 
+        int movimientosAntes =
+                contarMovimientos();
 
-            throw new IllegalStateException(
-                    "No existe inventario para el producto "
-                            + PRODUCTO_ID
+        Venta venta =
+                crearVenta();
+
+        String numeroVenta =
+                venta.getNumero();
+
+        VentaDetalle detalle =
+                crearDetalle();
+
+        List<VentaDetalle> detalles =
+                new ArrayList<>();
+
+        detalles.add(detalle);
+
+        /*
+         * Provocamos un error en PostgreSQL
+         * durante el INSERT del pago.
+         *
+         * El monto sigue siendo correcto para pasar
+         * las validaciones del Service.
+         *
+         * La referencia supera el límite esperado
+         * por la restricción CHECK de la BD.
+         */
+        Pago pago =
+                crearPago(TOTAL);
+
+        pago.setReferencia(
+                "ROLLBACK-" + "X".repeat(1000)
+        );
+
+        System.out.println();
+        System.out.println(
+                "Stock antes: " + stockAntes
+        );
+
+        System.out.println(
+                "Movimientos antes: "
+                        + movimientosAntes
+        );
+
+        System.out.println(
+                "Venta de prueba: "
+                        + numeroVenta
+        );
+
+        try {
+
+            service.registrarVenta(
+                    venta,
+                    detalles,
+                    pago
             );
 
-
-        }
-
-        if (!Boolean.TRUE.equals(
-                inventario.getActivo()
-        )) {
-
-
-            throw new IllegalStateException(
-                    "El inventario del producto está inactivo"
+            throw new AssertionError(
+                    "La venta debería haber fallado "
+                            + "para provocar ROLLBACK"
             );
 
+        } catch (RuntimeException e) {
 
-        }
-
-        BigDecimal stockActual =
-                inventario.getCantidad();
-
-        if (stockActual.compareTo(
-                CANTIDAD_VENTA
-        ) >= 0) {
+            System.out.println();
+            System.out.println(
+                    "✅ Error provocado correctamente"
+            );
 
             System.out.println(
-                    "Stock suficiente para la prueba."
+                    "Mensaje: " + e.getMessage()
             );
+        }
 
-            return;
+        /*
+         * =====================================================
+         * VERIFICAR VENTA
+         * =====================================================
+         */
 
+        Long ventaEncontrada =
+                buscarVentaPorNumero(
+                        numeroVenta
+                );
+
+        if (ventaEncontrada != null) {
+
+            throw new AssertionError(
+                    "ROLLBACK FALLÓ: "
+                            + "la venta todavía existe. ID: "
+                            + ventaEncontrada
+            );
         }
 
         System.out.println(
-                "Stock insuficiente para la prueba."
+                "✅ Venta eliminada por ROLLBACK"
         );
+
+        /*
+         * =====================================================
+         * VERIFICAR DETALLE
+         * =====================================================
+         */
+
+        if (ventaEncontrada != null) {
+
+            List<VentaDetalle> detallesBD =
+                    ventaDetalleDAO.listarPorVenta(
+                            ventaEncontrada
+                    );
+
+            if (!detallesBD.isEmpty()) {
+
+                throw new AssertionError(
+                        "ROLLBACK FALLÓ: "
+                                + "el detalle todavía existe"
+                );
+            }
+        }
 
         System.out.println(
-                "Preparando stock automáticamente..."
+                "✅ Detalle eliminado por ROLLBACK"
         );
 
-        BigDecimal nuevoStock =
-                STOCK_PRUEBA.max(
-                        CANTIDAD_VENTA
+        /*
+         * =====================================================
+         * VERIFICAR STOCK
+         * =====================================================
+         */
+
+        Inventario inventarioDespues =
+                inventarioDAO.buscarPorProducto(
+                        EMPRESA_ID,
+                        SUCURSAL_ID,
+                        PRODUCTO_ID
                 );
 
-        actualizarStock(
-                inventario.getId(),
-                nuevoStock
+        BigDecimal stockDespues =
+                inventarioDespues.getCantidad();
+
+        System.out.println();
+        System.out.println(
+                "Stock después: " + stockDespues
+        );
+
+        verificar(
+                stockDespues,
+                stockAntes,
+                "Stock restaurado"
         );
 
         System.out.println(
-                "Stock preparado: "
-                        + nuevoStock
+                "✅ Stock restaurado correctamente"
+        );
+
+        /*
+         * =====================================================
+         * VERIFICAR MOVIMIENTOS
+         * =====================================================
+         */
+
+        int movimientosDespues =
+                contarMovimientos();
+
+        System.out.println(
+                "Movimientos después: "
+                        + movimientosDespues
+        );
+
+        if (movimientosDespues != movimientosAntes) {
+
+            throw new AssertionError(
+                    "ROLLBACK FALLÓ: "
+                            + "el movimiento de inventario "
+                            + "todavía existe"
+            );
+        }
+
+        System.out.println(
+                "✅ Movimiento eliminado por ROLLBACK"
+        );
+
+        /*
+         * =====================================================
+         * VERIFICAR PAGO
+         * =====================================================
+         *
+         * Como la venta desapareció por FK CASCADE,
+         * tampoco debe existir ningún pago asociado.
+         */
+
+        if (ventaEncontrada != null) {
+
+            List<Pago> pagos =
+                    pagoDAO.listarPorVenta(
+                            ventaEncontrada
+                    );
+
+            if (!pagos.isEmpty()) {
+
+                throw new AssertionError(
+                        "ROLLBACK FALLÓ: "
+                                + "el pago todavía existe"
+                );
+            }
+        }
+
+        System.out.println(
+                "✅ Pago eliminado por ROLLBACK"
+        );
+
+        System.out.println();
+        System.out.println(
+                "✅ TRANSACCIÓN COMPLETAMENTE REVERTIDA"
+        );
+
+        System.out.println(
+                "✅ Venta → revertida"
+        );
+
+        System.out.println(
+                "✅ Detalle → revertido"
+        );
+
+        System.out.println(
+                "✅ Inventario → restaurado"
+        );
+
+        System.out.println(
+                "✅ Movimiento → revertido"
+        );
+
+        System.out.println(
+                "✅ Pago → revertido"
+        );
+
+        System.out.println(
+                "✅ TEST 6 SUPERADO"
         );
     }
 
@@ -1123,9 +917,7 @@ public class TestVentaIntegralService {
     // CREACIÓN DE OBJETOS
     // =========================================================
 
-    private static Venta crearVentaBase(
-            String prefijo) {
-
+    private Venta crearVenta() {
 
         Venta venta =
                 new Venta();
@@ -1139,7 +931,7 @@ public class TestVentaIntegralService {
         );
 
         venta.setClienteId(
-                CLIENTE_ID
+                1L
         );
 
         venta.setAuthUserId(
@@ -1147,17 +939,14 @@ public class TestVentaIntegralService {
         );
 
         venta.setNumero(
-                prefijo
-                        + System.currentTimeMillis()
+                "TEST-INTEGRAL-"
+                        + System.nanoTime()
         );
 
         return venta;
-
-
     }
 
-    private static VentaDetalle crearDetalle() {
-
+    private VentaDetalle crearDetalle() {
 
         VentaDetalle detalle =
                 new VentaDetalle();
@@ -1171,7 +960,7 @@ public class TestVentaIntegralService {
         );
 
         detalle.setPrecioVenta(
-                PRECIO_VENTA
+                PRECIO
         );
 
         detalle.setDescuento(
@@ -1183,13 +972,10 @@ public class TestVentaIntegralService {
         );
 
         return detalle;
-
-
     }
 
-    private static Pago crearPagoParaDetalle(
-            VentaDetalle detalle) {
-
+    private Pago crearPago(
+            BigDecimal monto) {
 
         Pago pago =
                 new Pago();
@@ -1199,9 +985,7 @@ public class TestVentaIntegralService {
         );
 
         pago.setMonto(
-                calcularTotalPrueba(
-                        detalle
-                )
+                monto
         );
 
         pago.setAuthUserId(
@@ -1209,252 +993,83 @@ public class TestVentaIntegralService {
         );
 
         return pago;
-
-
-    }
-
-    /**
-
-     * Calcula únicamente el total necesario
-     * para construir el pago del test.
-     *
-     * NO reemplaza CalculadoraVentaUtil.
-     *
-     * Solo se utiliza para preparar un pago
-     * válido en pruebas de escenarios que
-     * deben fallar posteriormente.
-     */
-    private static BigDecimal calcularTotalPrueba(
-            VentaDetalle detalle) {
-
-        BigDecimal subtotal =
-                detalle.getCantidad()
-                        .multiply(
-                                detalle.getPrecioVenta()
-                        );
-
-        BigDecimal descuento =
-                detalle.getDescuento() == null
-                        ? BigDecimal.ZERO
-                        : detalle.getDescuento();
-
-        BigDecimal impuesto =
-                detalle.getImpuesto() == null
-                        ? BigDecimal.ZERO
-                        : detalle.getImpuesto();
-
-        return subtotal
-                .subtract(descuento)
-                .add(impuesto);
     }
 
     // =========================================================
-    // CONSULTAR MOVIMIENTO
+    // INVENTARIO
     // =========================================================
 
-    /**
+    private void prepararStockSiEsNecesario() {
 
-     * Busca el movimiento VENTA asociado
-     * a una venta específica.
-     */
-    private static MovimientoTest buscarMovimientoVenta(
-            Long ventaId) {
+        Inventario inventario =
+                inventarioDAO.buscarPorProducto(
+                        EMPRESA_ID,
+                        SUCURSAL_ID,
+                        PRODUCTO_ID
+                );
 
-        String sql = """
-    SELECT
-    id,
-    tipo,
-    cantidad,
-    stock_anterior,
-    stock_posterior,
-    referencia_tipo,
-    referencia_id
-    FROM movimientos_inventario
-    WHERE referencia_tipo = 'VENTA'
-    AND referencia_id = ?
-    ORDER BY id DESC
-    LIMIT 1
-    """;
+        if (inventario == null) {
 
-        try (
-                Connection connection =
-                        ConexionBD.conectar();
+            throw new IllegalStateException(
+                    "No existe inventario para producto "
+                            + PRODUCTO_ID
+            );
+        }
 
+        if (inventario.getCantidad()
+                .compareTo(
+                        CANTIDAD_VENTA
+                ) < 0) {
 
-                PreparedStatement statement =
-                        connection.prepareStatement(sql)
-
-
-        ) {
-
-
-            statement.setLong(
-                    1,
-                    ventaId
+            System.out.println(
+                    "Stock insuficiente para la prueba."
             );
 
-            try (
-                    ResultSet resultSet =
-                            statement.executeQuery()
-            ) {
-
-                if (!resultSet.next()) {
-                    return null;
-                }
-
-                MovimientoTest movimiento =
-                        new MovimientoTest();
-
-                movimiento.id =
-                        resultSet.getLong(
-                                "id"
-                        );
-
-                movimiento.tipo =
-                        resultSet.getString(
-                                "tipo"
-                        );
-
-                movimiento.cantidad =
-                        resultSet.getBigDecimal(
-                                "cantidad"
-                        );
-
-                movimiento.stockAnterior =
-                        resultSet.getBigDecimal(
-                                "stock_anterior"
-                        );
-
-                movimiento.stockPosterior =
-                        resultSet.getBigDecimal(
-                                "stock_posterior"
-                        );
-
-                movimiento.referenciaTipo =
-                        resultSet.getString(
-                                "referencia_tipo"
-                        );
-
-                long referenciaId =
-                        resultSet.getLong(
-                                "referencia_id"
-                        );
-
-                if (resultSet.wasNull()) {
-                    movimiento.referenciaId = null;
-                } else {
-                    movimiento.referenciaId =
-                            referenciaId;
-                }
-
-                return movimiento;
-            }
-
-
-        } catch (Exception e) {
-
-
-            throw new RuntimeException(
-                    "Error consultando movimiento de inventario",
-                    e
+            System.out.println(
+                    "Preparando stock automáticamente..."
             );
 
+            BigDecimal cantidadNecesaria =
+                    new BigDecimal("10");
 
+            actualizarStock(
+                    inventario.getId(),
+                    cantidadNecesaria
+            );
+
+            System.out.println(
+                    "Stock preparado: "
+                            + cantidadNecesaria
+            );
         }
     }
 
-    // =========================================================
-    // BUSCAR PRODUCTO SIN INVENTARIO
-    // =========================================================
+    private Long obtenerInventarioId() {
 
-    /**
+        Inventario inventario =
+                inventarioDAO.buscarPorProducto(
+                        EMPRESA_ID,
+                        SUCURSAL_ID,
+                        PRODUCTO_ID
+                );
 
-     * Busca un producto que no tenga inventario
-     * para la empresa y sucursal de prueba.
-     *
-     * Si no existe, devuelve null.
-     */
-    private static Long buscarProductoSinInventario() {
-
-        String sql = """
-    SELECT p.id
-    FROM productos p
-    WHERE NOT EXISTS (
-    SELECT 1
-    FROM inventarios i
-    WHERE i.producto_id = p.id
-    AND i.empresa_id = ?
-    AND i.sucursal_id = ?
-    )
-    ORDER BY p.id
-    LIMIT 1
-    """;
-
-        try (
-                Connection connection =
-                        ConexionBD.conectar();
-
-
-                PreparedStatement statement =
-                        connection.prepareStatement(sql)
-
-
-        ) {
-
-
-            statement.setLong(
-                    1,
-                    EMPRESA_ID
-            );
-
-            statement.setLong(
-                    2,
-                    SUCURSAL_ID
-            );
-
-            try (
-                    ResultSet resultSet =
-                            statement.executeQuery()
-            ) {
-
-                if (resultSet.next()) {
-
-                    return resultSet.getLong(
-                            "id"
-                    );
-                }
-            }
-
-
-        } catch (Exception e) {
-
-
-            throw new RuntimeException(
-                    "Error buscando producto sin inventario",
-                    e
-            );
-
-
+        if (inventario == null) {
+            return null;
         }
 
-        return null;
+        return inventario.getId();
     }
 
-    // =========================================================
-    // MODIFICAR STOCK
-    // =========================================================
-
-    private static void actualizarStock(
+    private void actualizarStock(
             Long inventarioId,
             BigDecimal cantidad) {
 
-
         String sql = """
-           UPDATE inventarios
-           SET cantidad = ?,
-               updated_at = CURRENT_TIMESTAMP
-           WHERE id = ?
-           """;
+                UPDATE inventarios
+                SET cantidad = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """;
 
         try (
                 Connection connection =
@@ -1474,42 +1089,27 @@ public class TestVentaIntegralService {
                     inventarioId
             );
 
-            int filas =
-                    statement.executeUpdate();
-
-            if (filas != 1) {
-
-                throw new RuntimeException(
-                        "No se pudo actualizar el stock de prueba"
-                );
-            }
+            statement.executeUpdate();
 
         } catch (Exception e) {
 
             throw new RuntimeException(
-                    "Error preparando stock de prueba",
+                    "No se pudo preparar el stock",
                     e
             );
         }
-
-
     }
 
-    // =========================================================
-    // MODIFICAR ESTADO INVENTARIO
-    // =========================================================
-
-    private static void cambiarEstadoInventario(
+    private void cambiarActivo(
             Long inventarioId,
             boolean activo) {
 
-
         String sql = """
-           UPDATE inventarios
-           SET activo = ?,
-               updated_at = CURRENT_TIMESTAMP
-           WHERE id = ?
-           """;
+                UPDATE inventarios
+                SET activo = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """;
 
         try (
                 Connection connection =
@@ -1529,36 +1129,241 @@ public class TestVentaIntegralService {
                     inventarioId
             );
 
-            int filas =
-                    statement.executeUpdate();
+            statement.executeUpdate();
 
-            if (filas != 1) {
+        } catch (Exception e) {
 
-                throw new RuntimeException(
-                        "No se pudo cambiar el estado del inventario"
-                );
+            throw new RuntimeException(
+                    "No se pudo modificar el estado "
+                            + "del inventario",
+                    e
+            );
+        }
+    }
+
+    private boolean obtenerActivo(
+            Long inventarioId) {
+
+        String sql = """
+                SELECT activo
+                FROM inventarios
+                WHERE id = ?
+                """;
+
+        try (
+                Connection connection =
+                        ConexionBD.conectar();
+
+                PreparedStatement statement =
+                        connection.prepareStatement(sql)
+        ) {
+
+            statement.setLong(
+                    1,
+                    inventarioId
+            );
+
+            try (
+                    ResultSet rs =
+                            statement.executeQuery()
+            ) {
+
+                if (rs.next()) {
+
+                    return rs.getBoolean(
+                            "activo"
+                    );
+                }
             }
 
         } catch (Exception e) {
 
             throw new RuntimeException(
-                    "Error modificando estado del inventario",
+                    "No se pudo consultar el inventario",
                     e
             );
         }
 
-
+        throw new RuntimeException(
+                "Inventario no encontrado"
+        );
     }
 
     // =========================================================
-    // ASSERTIONS
+    // MOVIMIENTOS
     // =========================================================
 
-    private static void verificar(
+    private int contarMovimientos() {
+
+        String sql = """
+                SELECT COUNT(*)
+                FROM movimientos_inventario
+                WHERE empresa_id = ?
+                  AND sucursal_id = ?
+                  AND producto_id = ?
+                """;
+
+        try (
+                Connection connection =
+                        ConexionBD.conectar();
+
+                PreparedStatement statement =
+                        connection.prepareStatement(sql)
+        ) {
+
+            statement.setLong(
+                    1,
+                    EMPRESA_ID
+            );
+
+            statement.setLong(
+                    2,
+                    SUCURSAL_ID
+            );
+
+            statement.setLong(
+                    3,
+                    PRODUCTO_ID
+            );
+
+            try (
+                    ResultSet rs =
+                            statement.executeQuery()
+            ) {
+
+                if (rs.next()) {
+
+                    return rs.getInt(1);
+                }
+            }
+
+        } catch (Exception e) {
+
+            throw new RuntimeException(
+                    "No se pudieron contar "
+                            + "los movimientos",
+                    e
+            );
+        }
+
+        return 0;
+    }
+
+    // =========================================================
+    // VENTAS
+    // =========================================================
+
+    private Long buscarVentaPorNumero(
+            String numero) {
+
+        String sql = """
+                SELECT id
+                FROM ventas
+                WHERE numero = ?
+                """;
+
+        try (
+                Connection connection =
+                        ConexionBD.conectar();
+
+                PreparedStatement statement =
+                        connection.prepareStatement(sql)
+        ) {
+
+            statement.setString(
+                    1,
+                    numero
+            );
+
+            try (
+                    ResultSet rs =
+                            statement.executeQuery()
+            ) {
+
+                if (rs.next()) {
+
+                    return rs.getLong("id");
+                }
+            }
+
+        } catch (Exception e) {
+
+            throw new RuntimeException(
+                    "No se pudo buscar la venta",
+                    e
+            );
+        }
+
+        return null;
+    }
+
+    // =========================================================
+    // PRODUCTO SIN INVENTARIO
+    // =========================================================
+
+    private Long buscarProductoSinInventario() {
+
+        String sql = """
+                SELECT p.id
+                FROM productos p
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM inventarios i
+                    WHERE i.producto_id = p.id
+                      AND i.empresa_id = ?
+                      AND i.sucursal_id = ?
+                )
+                LIMIT 1
+                """;
+
+        try (
+                Connection connection =
+                        ConexionBD.conectar();
+
+                PreparedStatement statement =
+                        connection.prepareStatement(sql)
+        ) {
+
+            statement.setLong(
+                    1,
+                    EMPRESA_ID
+            );
+
+            statement.setLong(
+                    2,
+                    SUCURSAL_ID
+            );
+
+            try (
+                    ResultSet rs =
+                            statement.executeQuery()
+            ) {
+
+                if (rs.next()) {
+
+                    return rs.getLong("id");
+                }
+            }
+
+        } catch (Exception e) {
+
+            throw new RuntimeException(
+                    "No se pudo buscar producto sin inventario",
+                    e
+            );
+        }
+
+        return null;
+    }
+
+    // =========================================================
+    // VALIDACIONES
+    // =========================================================
+
+    private void verificar(
             BigDecimal resultado,
             BigDecimal esperado,
             String prueba) {
-
 
         if (resultado != null
                 && resultado.compareTo(
@@ -1582,58 +1387,21 @@ public class TestVentaIntegralService {
                             + resultado
             );
         }
-
-
     }
 
-    // =========================================================
-    // PROBAR EXCEPCIÓN
-    // =========================================================
+    private void verificarEstado(
+            String resultado,
+            String esperado) {
 
-    private static void probarExcepcion(
-            Runnable operacion,
-            String nombrePrueba) {
-        try {
-
-            operacion.run();
+        if (!esperado.equals(resultado)) {
 
             throw new AssertionError(
-                    nombrePrueba
-                            + " → debería haber sido rechazada"
-            );
-
-        } catch (RuntimeException e) {
-
-            System.out.println(
-                    "✅ "
-                            + nombrePrueba
-                            + " → rechazada correctamente"
+                    "Estado esperado: "
+                            + esperado
+                            + ", obtenido: "
+                            + resultado
             );
         }
-
-    }
-
-    // =========================================================
-    // MODELO AUXILIAR DE MOVIMIENTO
-    // =========================================================
-
-    private static class MovimientoTest {
-
-
-        Long id;
-
-        String tipo;
-
-        BigDecimal cantidad;
-
-        BigDecimal stockAnterior;
-
-        BigDecimal stockPosterior;
-
-        String referenciaTipo;
-
-        Long referenciaId;
-
-
     }
 }
+

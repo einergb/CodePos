@@ -4,448 +4,703 @@ import com.codepos.config.ConexionBD;
 import com.codepos.model.Venta;
 
 import java.sql.*;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+
+/**
+ * DAO encargado de la persistencia
+ * de ventas.
+ *
+ * Soporta:
+ *
+ * - CRUD básico.
+ * - Multiempresa.
+ * - Transacciones externas.
+ * - Flujo POS integral.
+ */
 public class VentaDAO {
 
+
     /**
-     * Busca una venta por empresa e ID.
+     * Buscar venta por empresa e ID.
      */
     public Venta buscarPorId(
             Long empresaId,
             Long ventaId) {
 
+
         String sql = """
-        SELECT
-            id,
-            empresa_id,
-            sucursal_id,
-            cliente_id,
-            auth_user_id,
-            numero,
-            fecha,
-            estado,
-            subtotal,
-            descuento,
-            impuesto,
-            total,
-            observaciones,
-            created_at,
-            updated_at
-        FROM ventas
-        WHERE empresa_id = ?
-          AND id = ?
-        """;
+            SELECT
+                id,
+                empresa_id,
+                sucursal_id,
+                cliente_id,
+                auth_user_id,
+                numero,
+                fecha,
+                estado,
+                subtotal,
+                descuento,
+                impuesto,
+                total,
+                observaciones,
+                created_at,
+                updated_at
+            FROM ventas
+            WHERE empresa_id = ?
+              AND id = ?
+            """;
 
-        try (
-                Connection conexion = ConexionBD.conectar();
-                PreparedStatement ps = conexion.prepareStatement(sql)
-        ) {
 
-            ps.setLong(1, empresaId);
-            ps.setLong(2, ventaId);
+        try(
+                Connection connection =
+                        ConexionBD.conectar();
 
-            try (ResultSet rs = ps.executeQuery()) {
+                PreparedStatement ps =
+                        connection.prepareStatement(sql)
+        ){
 
-                if (rs.next()) {
+
+            ps.setLong(
+                    1,
+                    empresaId
+            );
+
+
+            ps.setLong(
+                    2,
+                    ventaId
+            );
+
+
+            try(ResultSet rs = ps.executeQuery()){
+
+
+                if(rs.next()){
+
                     return mapearVenta(rs);
+
                 }
+
             }
 
-        } catch (SQLException e) {
+
+        }catch(SQLException e){
 
             throw new RuntimeException(
-                    "Error al buscar venta",
+                    "Error buscando venta",
                     e
             );
+
         }
 
+
         return null;
+
     }
 
+
+
+
+
     /**
-     * Lista las ventas de una empresa.
+     * Lista ventas por empresa.
      */
     public List<Venta> listarPorEmpresa(
-            Long empresaId) {
+            Long empresaId){
+
 
         String sql = """
-        SELECT
-            id,
-            empresa_id,
-            sucursal_id,
-            cliente_id,
-            auth_user_id,
-            numero,
-            fecha,
-            estado,
-            subtotal,
-            descuento,
-            impuesto,
-            total,
-            observaciones,
-            created_at,
-            updated_at
-        FROM ventas
-        WHERE empresa_id = ?
-        ORDER BY id
-        """;
+            SELECT
+                id,
+                empresa_id,
+                sucursal_id,
+                cliente_id,
+                auth_user_id,
+                numero,
+                fecha,
+                estado,
+                subtotal,
+                descuento,
+                impuesto,
+                total,
+                observaciones,
+                created_at,
+                updated_at
+            FROM ventas
+            WHERE empresa_id = ?
+            ORDER BY id DESC
+            """;
 
-        List<Venta> ventas = new ArrayList<>();
 
-        try (
-                Connection conexion = ConexionBD.conectar();
-                PreparedStatement ps = conexion.prepareStatement(sql)
-        ) {
+        List<Venta> ventas =
+                new ArrayList<>();
 
-            ps.setLong(1, empresaId);
 
-            try (ResultSet rs = ps.executeQuery()) {
+        try(
+                Connection connection =
+                        ConexionBD.conectar();
 
-                while (rs.next()) {
+                PreparedStatement ps =
+                        connection.prepareStatement(sql)
+
+        ){
+
+
+            ps.setLong(
+                    1,
+                    empresaId
+            );
+
+
+            try(ResultSet rs =
+                        ps.executeQuery()){
+
+
+                while(rs.next()){
 
                     ventas.add(
                             mapearVenta(rs)
                     );
+
                 }
+
             }
 
-        } catch (SQLException e) {
+
+        }catch(SQLException e){
 
             throw new RuntimeException(
-                    "Error al listar ventas",
+                    "Error listando ventas",
                     e
             );
+
         }
 
+
         return ventas;
+
     }
 
-    /**
-     * Crea una venta utilizando una conexión propia.
-     *
-     * Este método mantiene compatibilidad con:
-     *
-     * - VentaService
-     * - TestVentaDAO
-     * - Otros servicios que creen una venta individualmente
-     *
-     * La transacción integral utilizará el método
-     * crear(Connection, Venta).
-     */
-    public Long crear(Venta venta) {
 
-        try (Connection conexion = ConexionBD.conectar()) {
+
+
+
+    /**
+     * Crear venta usando conexión propia.
+     */
+    public Long crear(
+            Venta venta){
+
+
+        try(
+                Connection connection =
+                        ConexionBD.conectar()
+
+        ){
+
 
             return crear(
-                    conexion,
+                    connection,
                     venta
             );
 
-        } catch (SQLException e) {
+
+        }catch(SQLException e){
+
 
             throw new RuntimeException(
-                    "Error al crear venta",
+                    "Error creando venta",
                     e
             );
+
         }
+
     }
 
+
+
+
+
     /**
-     * Crea una venta utilizando una conexión existente.
+     * Crear venta dentro de una transacción existente.
      *
-     * Este método está diseñado para operaciones
-     * transaccionales donde varias operaciones DAO
-     * deben utilizar la misma conexión.
-     *
-     * IMPORTANTE:
-     *
-     * Este método NO abre ni cierra la conexión.
-     * Tampoco realiza commit ni rollback.
-     *
-     * La conexión y la transacción son responsabilidad
-     * del servicio que invoca este método.
+     * No abre conexión.
+     * No hace commit.
+     * No hace rollback.
      */
     public Long crear(
-            Connection conexion,
-            Venta venta) {
+            Connection connection,
+            Venta venta){
+
 
         String sql = """
-        INSERT INTO ventas (
-            empresa_id,
-            sucursal_id,
-            cliente_id,
-            auth_user_id,
-            numero,
-            estado,
-            subtotal,
-            descuento,
-            impuesto,
-            total,
-            observaciones
-        )
-        VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        )
-        RETURNING id
-        """;
+            INSERT INTO ventas
+            (
+                empresa_id,
+                sucursal_id,
+                cliente_id,
+                auth_user_id,
+                numero,
+                estado,
+                subtotal,
+                descuento,
+                impuesto,
+                total,
+                observaciones
+            )
+            VALUES
+            (
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?
+            )
+            RETURNING id
+            """;
 
-        try (
+
+
+        try(
                 PreparedStatement ps =
-                        conexion.prepareStatement(sql)
-        ) {
+                        connection.prepareStatement(sql)
+        ){
 
-            // Empresa
+
+
             ps.setLong(
                     1,
                     venta.getEmpresaId()
             );
 
-            // Sucursal
+
+
             ps.setLong(
                     2,
                     venta.getSucursalId()
             );
 
-            // Cliente opcional
-            if (venta.getClienteId() != null) {
+
+
+
+            if(venta.getClienteId()!=null){
+
 
                 ps.setLong(
                         3,
                         venta.getClienteId()
                 );
 
-            } else {
+
+            }else{
+
 
                 ps.setNull(
                         3,
                         Types.BIGINT
                 );
+
             }
 
-            // Usuario autenticado opcional
-            if (venta.getAuthUserId() != null) {
+
+
+
+
+            if(venta.getAuthUserId()!=null){
+
 
                 ps.setInt(
                         4,
                         venta.getAuthUserId()
                 );
 
-            } else {
+
+            }else{
+
 
                 ps.setNull(
                         4,
                         Types.INTEGER
                 );
+
             }
 
-            // Número
+
+
+
+
             ps.setString(
                     5,
                     venta.getNumero()
+                            .trim()
             );
 
-            // Estado
+
+
+
+
             ps.setString(
                     6,
                     venta.getEstado()
             );
 
-            // Subtotal
+
+
+
+
             ps.setBigDecimal(
                     7,
-                    venta.getSubtotal()
+                    valorSeguro(
+                            venta.getSubtotal()
+                    )
             );
 
-            // Descuento
+
             ps.setBigDecimal(
                     8,
-                    venta.getDescuento()
+                    valorSeguro(
+                            venta.getDescuento()
+                    )
             );
 
-            // Impuesto
+
             ps.setBigDecimal(
                     9,
-                    venta.getImpuesto()
+                    valorSeguro(
+                            venta.getImpuesto()
+                    )
             );
 
-            // Total
+
             ps.setBigDecimal(
                     10,
-                    venta.getTotal()
+                    valorSeguro(
+                            venta.getTotal()
+                    )
             );
 
-            // Observaciones opcionales
-            if (venta.getObservaciones() != null) {
+
+
+
+
+            if(venta.getObservaciones()!=null
+                    &&
+                    !venta.getObservaciones()
+                            .isBlank()){
+
 
                 ps.setString(
                         11,
                         venta.getObservaciones()
+                                .trim()
                 );
 
-            } else {
+
+            }else{
+
 
                 ps.setNull(
                         11,
                         Types.VARCHAR
                 );
+
             }
 
-            try (ResultSet rs =
-                         ps.executeQuery()) {
 
-                if (rs.next()) {
+
+
+
+            try(ResultSet rs =
+                        ps.executeQuery()){
+
+
+                if(rs.next()){
 
                     return rs.getLong("id");
+
                 }
+
             }
 
-        } catch (SQLException e) {
+
+
+        }catch(SQLException e){
+
 
             throw new RuntimeException(
-                    "Error al crear venta",
+                    "Error insertando venta",
                     e
             );
+
         }
 
+
+
         throw new RuntimeException(
-                "No se pudo obtener el ID de la venta creada"
+                "No se generó ID de venta"
         );
+
     }
 
+
+
+
+
+
+
     /**
-     * Convierte un ResultSet en un objeto Venta.
+     * Marca venta como pagada.
+     */
+    public void marcarComoPagada(
+            Connection connection,
+            Long empresaId,
+            Long ventaId){
+
+
+
+        String sql = """
+            UPDATE ventas
+            SET estado='PAGADA',
+                updated_at=CURRENT_TIMESTAMP
+            WHERE empresa_id=?
+              AND id=?
+            """;
+
+
+
+        try(
+                PreparedStatement ps =
+                        connection.prepareStatement(sql)
+        ){
+
+
+            ps.setLong(
+                    1,
+                    empresaId
+            );
+
+
+            ps.setLong(
+                    2,
+                    ventaId
+            );
+
+
+
+            int filas =
+                    ps.executeUpdate();
+
+
+
+            if(filas!=1){
+
+
+                throw new IllegalStateException(
+                        "No se pudo actualizar la venta a PAGADA"
+                );
+
+            }
+
+
+
+        }catch(SQLException e){
+
+
+            throw new RuntimeException(
+                    "Error actualizando estado de venta",
+                    e
+            );
+
+        }
+
+    }
+
+
+
+
+
+
+    /**
+     * Mapea venta.
      */
     private Venta mapearVenta(
             ResultSet rs)
             throws SQLException {
 
-        Venta venta = new Venta();
+
+
+        Venta venta =
+                new Venta();
+
+
 
         venta.setId(
                 rs.getLong("id")
         );
 
+
         venta.setEmpresaId(
                 rs.getLong("empresa_id")
         );
+
 
         venta.setSucursalId(
                 rs.getLong("sucursal_id")
         );
 
-        // Cliente opcional
-        long clienteId =
+
+
+
+        long cliente =
                 rs.getLong("cliente_id");
 
-        if (!rs.wasNull()) {
+
+        if(!rs.wasNull()){
+
 
             venta.setClienteId(
-                    clienteId
+                    cliente
             );
+
         }
 
-        // Usuario autenticado opcional
-        int authUserId =
+
+
+
+        int usuario =
                 rs.getInt("auth_user_id");
 
-        if (!rs.wasNull()) {
+
+        if(!rs.wasNull()){
+
 
             venta.setAuthUserId(
-                    authUserId
+                    usuario
             );
+
         }
+
+
+
+
 
         venta.setNumero(
                 rs.getString("numero")
         );
 
-        venta.setFecha(
-                rs.getObject(
-                        "fecha",
-                        java.time.OffsetDateTime.class
-                )
-        );
 
         venta.setEstado(
                 rs.getString("estado")
         );
 
+
         venta.setSubtotal(
                 rs.getBigDecimal("subtotal")
         );
+
 
         venta.setDescuento(
                 rs.getBigDecimal("descuento")
         );
 
+
         venta.setImpuesto(
                 rs.getBigDecimal("impuesto")
         );
+
 
         venta.setTotal(
                 rs.getBigDecimal("total")
         );
 
+
         venta.setObservaciones(
                 rs.getString("observaciones")
         );
 
-        venta.setCreatedAt(
-                rs.getObject(
-                        "created_at",
-                        java.time.OffsetDateTime.class
+
+
+        venta.setFecha(
+                obtenerFecha(
+                        rs,
+                        "fecha"
                 )
         );
+
+
+        venta.setCreatedAt(
+                obtenerFecha(
+                        rs,
+                        "created_at"
+                )
+        );
+
 
         venta.setUpdatedAt(
-                rs.getObject(
-                        "updated_at",
-                        java.time.OffsetDateTime.class
+                obtenerFecha(
+                        rs,
+                        "updated_at"
                 )
         );
 
+
+
         return venta;
+
     }
-    public void marcarComoPagada(
-            Connection connection,
-            Long empresaId,
-            Long ventaId) {
 
-        String sql = """
-            UPDATE ventas
-            SET estado = 'PAGADA',
-                updated_at = CURRENT_TIMESTAMP
-            WHERE empresa_id = ?
-              AND id = ?
-              AND estado = 'REGISTRADA'
-            """;
 
-        try (
-                PreparedStatement statement =
-                        connection.prepareStatement(sql)
-        ) {
 
-            statement.setLong(1, empresaId);
-            statement.setLong(2, ventaId);
 
-            int filas =
-                    statement.executeUpdate();
 
-            if (filas != 1) {
 
-                throw new RuntimeException(
-                        "La venta no existe, no pertenece a la empresa o no está en estado REGISTRADA"
-                );
-            }
+    private OffsetDateTime obtenerFecha(
+            ResultSet rs,
+            String campo)
+            throws SQLException {
 
-        } catch (SQLException e) {
 
-            throw new RuntimeException(
-                    "Error al marcar la venta como PAGADA",
-                    e
-            );
+        Timestamp fecha =
+                rs.getTimestamp(campo);
+
+
+        if(fecha==null){
+
+            return null;
+
         }
+
+
+        return fecha.toInstant()
+                .atOffset(
+                        java.time.ZoneOffset.UTC
+                );
+
     }
+
+
+
+
+
+    private java.math.BigDecimal valorSeguro(
+            java.math.BigDecimal valor){
+
+
+        return valor == null
+                ?
+                java.math.BigDecimal.ZERO
+                :
+                valor;
+
+    }
+
 }

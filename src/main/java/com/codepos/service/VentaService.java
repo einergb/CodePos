@@ -8,195 +8,292 @@ import java.util.List;
 
 public class VentaService {
 
+
     private final VentaDAO ventaDAO;
 
+
     public VentaService() {
-        this.ventaDAO = new VentaDAO();
+
+        this.ventaDAO =
+                new VentaDAO();
+
     }
 
+
+
     /**
-     * Busca una venta por empresa e ID.
+     * Busca venta por empresa e ID.
      */
     public Venta buscarPorId(
             Long empresaId,
             Long ventaId) {
 
+
         validarId(
                 empresaId,
-                "El ID de la empresa es obligatorio"
+                "La empresa es obligatoria"
         );
+
 
         validarId(
                 ventaId,
-                "El ID de la venta es obligatorio"
+                "La venta es obligatoria"
         );
 
-        return ventaDAO.buscarPorId(
-                empresaId,
-                ventaId
-        );
+
+        Venta venta =
+                ventaDAO.buscarPorId(
+                        empresaId,
+                        ventaId
+                );
+
+
+        if(venta == null){
+
+            throw new IllegalArgumentException(
+                    "No existe la venta indicada"
+            );
+
+        }
+
+
+        return venta;
+
     }
 
+
+
+
     /**
-     * Lista las ventas de una empresa.
+     * Lista ventas por empresa.
      */
     public List<Venta> listarPorEmpresa(
-            Long empresaId) {
+            Long empresaId){
+
 
         validarId(
                 empresaId,
-                "El ID de la empresa es obligatorio"
+                "La empresa es obligatoria"
         );
+
 
         return ventaDAO.listarPorEmpresa(
                 empresaId
         );
+
     }
 
-    /**
-     * Crea una nueva venta.
-     */
-    public Long crear(Venta venta) {
 
-        validarVenta(venta);
+
+
+
+    /**
+     * Crear venta.
+     */
+    public Long crear(
+            Venta venta){
+
+
+        validarVenta(
+                venta
+        );
+
 
         /*
-         * El estado inicial de una venta nueva
-         * siempre será REGISTRADA.
-         *
-         * La venta podrá pasar posteriormente
-         * a PAGADA o ANULADA mediante la lógica
-         * correspondiente.
+         * Nueva venta siempre inicia registrada.
          */
-        venta.setEstado("REGISTRADA");
+        venta.setEstado(
+                "REGISTRADA"
+        );
 
-        return ventaDAO.crear(venta);
+
+        return ventaDAO.crear(
+                venta
+        );
+
     }
 
-    /**
-     * Valida los datos principales de una venta.
-     */
-    private void validarVenta(Venta venta) {
 
-        if (venta == null) {
+
+
+
+
+
+    private void validarVenta(
+            Venta venta){
+
+
+        if(venta == null){
 
             throw new IllegalArgumentException(
                     "La venta es obligatoria"
             );
+
         }
+
+
 
         validarId(
                 venta.getEmpresaId(),
                 "La empresa es obligatoria"
         );
 
+
         validarId(
                 venta.getSucursalId(),
                 "La sucursal es obligatoria"
         );
 
-        if (venta.getNumero() == null
-                || venta.getNumero().trim().isEmpty()) {
+
+
+
+
+        if(venta.getNumero()==null
+                || venta.getNumero().isBlank()){
+
 
             throw new IllegalArgumentException(
                     "El número de venta es obligatorio"
             );
+
         }
 
+
+        venta.setNumero(
+                venta.getNumero().trim()
+        );
+
+
+
+
+
+
         /*
-         * Cliente opcional.
-         *
-         * Una venta puede ser:
-         *
-         * 1. Venta con cliente identificado.
-         * 2. Venta de mostrador.
+         * Cliente opcional
          */
-        if (venta.getClienteId() != null) {
+        if(venta.getClienteId()!=null){
 
             validarId(
                     venta.getClienteId(),
-                    "El ID del cliente no es válido"
+                    "Cliente inválido"
             );
+
         }
+
+
+
+
 
         /*
-         * Usuario autenticado opcional en esta etapa.
-         *
-         * Cuando integremos Auth, el flujo real
-         * proporcionará este ID.
+         * Usuario auditoría
          */
-        if (venta.getAuthUserId() != null
-                && venta.getAuthUserId() <= 0) {
+        if(venta.getAuthUserId()!=null
+                && venta.getAuthUserId()<=0){
+
 
             throw new IllegalArgumentException(
-                    "El ID del usuario autenticado no es válido"
+                    "Usuario inválido"
             );
+
         }
 
-        validarMontoNoNegativo(
+
+
+
+
+
+        validarMonto(
                 venta.getSubtotal(),
-                "El subtotal no puede ser negativo"
+                "Subtotal no puede ser negativo"
         );
 
-        validarMontoNoNegativo(
+
+        validarMonto(
                 venta.getDescuento(),
-                "El descuento no puede ser negativo"
+                "Descuento no puede ser negativo"
         );
 
-        validarMontoNoNegativo(
+
+        validarMonto(
                 venta.getImpuesto(),
-                "El impuesto no puede ser negativo"
+                "Impuesto no puede ser negativo"
         );
 
-        validarMontoNoNegativo(
+
+        validarMonto(
                 venta.getTotal(),
-                "El total no puede ser negativo"
+                "Total no puede ser negativo"
         );
 
-        if (venta.getObservaciones() != null
-                && venta.getObservaciones().trim().isEmpty()) {
 
-            throw new IllegalArgumentException(
-                    "Las observaciones no pueden estar vacías"
-            );
+
+
+
+        if(venta.getObservaciones()!=null){
+
+            String observacion =
+                    venta.getObservaciones()
+                            .trim();
+
+
+            if(observacion.isEmpty()){
+
+                venta.setObservaciones(null);
+
+            }else{
+
+                venta.setObservaciones(
+                        observacion
+                );
+
+            }
+
         }
+
+
     }
 
-    /**
-     * Valida que un monto exista y no sea negativo.
-     */
-    private void validarMontoNoNegativo(
+
+
+
+
+    private void validarMonto(
             BigDecimal monto,
-            String mensaje) {
+            String mensaje){
 
-        if (monto == null) {
 
-            throw new IllegalArgumentException(
-                    mensaje
-            );
-        }
+        if(monto!=null &&
+                monto.compareTo(
+                        BigDecimal.ZERO
+                )<0){
 
-        if (monto.compareTo(BigDecimal.ZERO) < 0) {
 
             throw new IllegalArgumentException(
                     mensaje
             );
+
         }
+
     }
 
-    /**
-     * Valida un identificador.
-     */
+
+
+
+
     private void validarId(
             Long id,
-            String mensaje) {
+            String mensaje){
 
-        if (id == null || id <= 0) {
+
+        if(id==null || id<=0){
+
 
             throw new IllegalArgumentException(
                     mensaje
             );
+
         }
+
     }
 
 }

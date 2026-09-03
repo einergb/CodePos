@@ -1,40 +1,60 @@
-
 package com.codepos.dao;
 
 import com.codepos.config.ConexionBD;
-import com.codepos.model.MovimientoInventario;
+import com.codepos.enums.TipoMovimientoInventario;
 
-import java.sql.*;
-import java.util.ArrayList;
-import java.util.List;
 import java.math.BigDecimal;
+import java.sql.CallableStatement;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Types;
 
+
+/**
+ * DAO encargado del registro de movimientos
+ * de inventario.
+ *
+ * La lógica principal se ejecuta en PostgreSQL
+ * mediante:
+ *
+ * registrar_movimiento_inventario()
+ *
+ * Responsabilidades PostgreSQL:
+ *
+ * - Bloquear inventario.
+ * - Validar existencia.
+ * - Validar stock.
+ * - Actualizar cantidad.
+ * - Registrar kardex.
+ *
+ * Este DAO únicamente comunica Java con BD.
+ */
 public class MovimientoInventarioDAO {
 
+
     /**
-     * Registra un movimiento de inventario utilizando
-     * una conexión propia.
+     * Registro independiente.
      *
-     * Este método mantiene compatibilidad con las
-     * pruebas y operaciones independientes del sistema.
-     *
-     * @return ID del movimiento generado.
+     * Crea su propia conexión.
      */
     public Long registrarMovimiento(
             Long empresaId,
             Long sucursalId,
             Long productoId,
-            String tipo,
+            TipoMovimientoInventario tipo,
             BigDecimal cantidad,
             String motivo,
             String referenciaTipo,
             Long referenciaId,
             Integer authUserId) {
 
+
         try (
                 Connection connection =
                         ConexionBD.conectar()
         ) {
+
 
             return registrarMovimiento(
                     connection,
@@ -49,53 +69,57 @@ public class MovimientoInventarioDAO {
                     authUserId
             );
 
-        } catch (Exception e) {
+
+        } catch (SQLException e) {
+
 
             throw new RuntimeException(
-                    "Error al registrar movimiento de inventario",
+                    "Error registrando movimiento de inventario",
                     e
             );
         }
     }
 
+
+
+
     /**
-     * Registra un movimiento utilizando una conexión
-     * existente.
-     *
-     * Este método es utilizado cuando la operación
-     * forma parte de una transacción mayor.
+     * Registro dentro de una transacción existente.
      *
      * IMPORTANTE:
      *
-     * Este método NO abre ni cierra la conexión.
-     * La conexión pertenece al Service que controla
-     * la transacción.
+     * Este método:
      *
-     * Ejemplo:
+     * - No abre conexión.
+     * - No cierra conexión.
+     * - No realiza commit.
+     * - No realiza rollback.
      *
-     * BEGIN
-     *     venta
-     *     detalle
-     *     inventario
-     *     pago
-     * COMMIT
-     *
-     * Si algo falla, el Service ejecutará ROLLBACK.
-     *
-     * @param connection conexión de la transacción actual
-     * @return ID del movimiento generado
+     * La transacción pertenece al Service.
      */
     public Long registrarMovimiento(
             Connection connection,
             Long empresaId,
             Long sucursalId,
             Long productoId,
-            String tipo,
+            TipoMovimientoInventario tipo,
             BigDecimal cantidad,
             String motivo,
             String referenciaTipo,
             Long referenciaId,
             Integer authUserId) {
+
+
+        validarDatos(
+                connection,
+                empresaId,
+                sucursalId,
+                productoId,
+                tipo,
+                cantidad
+        );
+
+
 
         String sql = """
                 SELECT registrar_movimiento_inventario(
@@ -111,125 +135,259 @@ public class MovimientoInventarioDAO {
                 )
                 """;
 
+
+
         try (
                 CallableStatement statement =
                         connection.prepareCall(sql)
         ) {
+
 
             statement.setLong(
                     1,
                     empresaId
             );
 
+
             statement.setLong(
                     2,
                     sucursalId
             );
+
 
             statement.setLong(
                     3,
                     productoId
             );
 
+
             statement.setString(
                     4,
-                    tipo
+                    tipo.getValor()
             );
+
 
             statement.setBigDecimal(
                     5,
                     cantidad
             );
 
-            statement.setString(
-                    6,
-                    motivo
-            );
 
-            /*
-             * Referencia de la operación.
-             *
-             * Ejemplo:
-             *
-             * referenciaTipo = "VENTA"
-             * referenciaId   = ID de la venta
-             */
-            if (referenciaTipo != null) {
+
+            if(motivo != null && !motivo.isBlank()) {
 
                 statement.setString(
-                        7,
-                        referenciaTipo
+                        6,
+                        motivo.trim()
                 );
 
             } else {
 
                 statement.setNull(
-                        7,
+                        6,
                         Types.VARCHAR
                 );
             }
 
-            if (referenciaId != null) {
+
+
+
+            if(referenciaTipo != null
+                    && !referenciaTipo.isBlank()) {
+
+
+                statement.setString(
+                        7,
+                        referenciaTipo.trim()
+                );
+
+
+            } else {
+
+
+                statement.setNull(
+                        7,
+                        Types.VARCHAR
+                );
+
+            }
+
+
+
+
+            if(referenciaId != null) {
+
 
                 statement.setLong(
                         8,
                         referenciaId
                 );
 
+
             } else {
+
 
                 statement.setNull(
                         8,
                         Types.BIGINT
                 );
+
             }
 
-            /*
-             * Usuario autenticado que realizó
-             * el movimiento.
-             */
-            if (authUserId != null) {
+
+
+
+            if(authUserId != null) {
+
 
                 statement.setInt(
                         9,
                         authUserId
                 );
 
+
             } else {
+
 
                 statement.setNull(
                         9,
                         Types.INTEGER
                 );
+
             }
 
-            /*
-             * La función PostgreSQL retorna
-             * el ID del movimiento generado.
-             */
-            try (
-                    var resultSet =
+
+
+
+            try(
+                    ResultSet rs =
                             statement.executeQuery()
-            ) {
+            ){
 
-                if (resultSet.next()) {
 
-                    return resultSet.getLong(1);
+                if(rs.next()) {
+
+
+                    return rs.getLong(1);
+
                 }
+
             }
 
-        } catch (Exception e) {
+
+        } catch(SQLException e) {
+
 
             throw new RuntimeException(
-                    "Error al registrar movimiento de inventario",
+                    "Error ejecutando registrar_movimiento_inventario()",
                     e
+            );
+
+        }
+
+
+
+        throw new IllegalStateException(
+                "PostgreSQL no devolvió el ID del movimiento"
+        );
+
+    }
+
+
+
+
+
+    private void validarDatos(
+            Connection connection,
+            Long empresaId,
+            Long sucursalId,
+            Long productoId,
+            TipoMovimientoInventario tipo,
+            BigDecimal cantidad) {
+
+
+        if(connection == null) {
+
+            throw new IllegalArgumentException(
+                    "La conexión es obligatoria"
             );
         }
 
-        throw new RuntimeException(
-                "PostgreSQL no devolvió el ID del movimiento"
+
+
+        validarId(
+                empresaId,
+                "La empresa es obligatoria"
         );
+
+
+        validarId(
+                sucursalId,
+                "La sucursal es obligatoria"
+        );
+
+
+        validarId(
+                productoId,
+                "El producto es obligatorio"
+        );
+
+
+
+        if(tipo == null) {
+
+            throw new IllegalArgumentException(
+                    "El tipo de movimiento es obligatorio"
+            );
+
+        }
+
+
+
+        if(tipo.getValor() == null
+                || tipo.getValor().isBlank()) {
+
+
+            throw new IllegalArgumentException(
+                    "El tipo de movimiento no tiene valor configurado"
+            );
+
+        }
+
+
+
+        if(cantidad == null
+                || cantidad.compareTo(
+                BigDecimal.ZERO
+        ) <= 0) {
+
+
+            throw new IllegalArgumentException(
+                    "La cantidad debe ser mayor que cero"
+            );
+
+        }
+
+    }
+
+
+
+
+
+    private void validarId(
+            Long id,
+            String mensaje) {
+
+
+        if(id == null || id <= 0) {
+
+
+            throw new IllegalArgumentException(
+                    mensaje
+            );
+
+        }
+
     }
 
 }
-
