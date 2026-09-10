@@ -10,23 +10,33 @@ import java.util.List;
 public class CompraDetalleDAO {
 
     /**
-     * Busca un detalle por su ID.
+     * Busca un detalle por su ID, verificando que la compra
+     * a la que pertenece sea de la empresa indicada.
+     *
+     * compra_detalles no tiene empresa_id propio: la
+     * trazabilidad de empresa llega vía compra_id, por eso
+     * el filtro se resuelve con JOIN a compras.
      */
-    public CompraDetalle buscarPorId(Long detalleId) {
+    public CompraDetalle buscarPorId(
+            Long empresaId,
+            Long detalleId) {
 
         String sql = """
                 SELECT
-                    id,
-                    compra_id,
-                    producto_id,
-                    cantidad,
-                    precio_compra,
-                    descuento,
-                    impuesto,
-                    subtotal,
-                    created_at
-                FROM compra_detalles
-                WHERE id = ?
+                    cd.id,
+                    cd.compra_id,
+                    cd.producto_id,
+                    cd.cantidad,
+                    cd.precio_compra,
+                    cd.descuento,
+                    cd.impuesto,
+                    cd.subtotal,
+                    cd.created_at
+                FROM compra_detalles cd
+                JOIN compras c
+                  ON c.id = cd.compra_id
+                WHERE c.empresa_id = ?
+                  AND cd.id = ?
                 """;
 
         try (
@@ -37,7 +47,8 @@ public class CompraDetalleDAO {
                         connection.prepareStatement(sql)
         ) {
 
-            statement.setLong(1, detalleId);
+            statement.setLong(1, empresaId);
+            statement.setLong(2, detalleId);
 
             try (ResultSet rs =
                          statement.executeQuery()) {
@@ -59,26 +70,30 @@ public class CompraDetalleDAO {
     }
 
     /**
-     * Lista todos los detalles pertenecientes
-     * a una compra.
+     * Lista todos los detalles pertenecientes a una compra,
+     * verificando que la compra sea de la empresa indicada.
      */
     public List<CompraDetalle> listarPorCompra(
+            Long empresaId,
             Long compraId) {
 
         String sql = """
                 SELECT
-                    id,
-                    compra_id,
-                    producto_id,
-                    cantidad,
-                    precio_compra,
-                    descuento,
-                    impuesto,
-                    subtotal,
-                    created_at
-                FROM compra_detalles
-                WHERE compra_id = ?
-                ORDER BY id
+                    cd.id,
+                    cd.compra_id,
+                    cd.producto_id,
+                    cd.cantidad,
+                    cd.precio_compra,
+                    cd.descuento,
+                    cd.impuesto,
+                    cd.subtotal,
+                    cd.created_at
+                FROM compra_detalles cd
+                JOIN compras c
+                  ON c.id = cd.compra_id
+                WHERE c.empresa_id = ?
+                  AND cd.compra_id = ?
+                ORDER BY cd.id
                 """;
 
         List<CompraDetalle> detalles =
@@ -92,7 +107,8 @@ public class CompraDetalleDAO {
                         connection.prepareStatement(sql)
         ) {
 
-            statement.setLong(1, compraId);
+            statement.setLong(1, empresaId);
+            statement.setLong(2, compraId);
 
             try (ResultSet rs =
                          statement.executeQuery()) {
@@ -118,6 +134,11 @@ public class CompraDetalleDAO {
 
     /**
      * Crea un nuevo detalle de compra.
+     *
+     * No requiere empresaId aquí: la pertenencia a la empresa
+     * ya se valida en CompraDetalleService.crear() antes de
+     * llamar a este método (verifica que la compra padre sea
+     * de la empresa indicada).
      */
     public Long crear(
             CompraDetalle detalle) {

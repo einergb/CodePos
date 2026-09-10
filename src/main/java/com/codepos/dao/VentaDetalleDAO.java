@@ -4,7 +4,6 @@ import com.codepos.config.ConexionBD;
 import com.codepos.model.VentaDetalle;
 
 import java.sql.*;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,8 +14,8 @@ import java.util.List;
  *
  * Soporta:
  *
- * - Consultas individuales.
- * - Listados.
+ * - Consultas individuales (filtradas por empresa vía JOIN a ventas).
+ * - Listados (idem).
  * - Creación independiente.
  * - Creación dentro de transacciones.
  *
@@ -25,25 +24,34 @@ public class VentaDetalleDAO {
 
 
     /**
-     * Busca un detalle por ID.
+     * Busca un detalle por ID, verificando que la venta
+     * a la que pertenece sea de la empresa indicada.
+     *
+     * venta_detalles no tiene empresa_id propio: la
+     * trazabilidad de empresa llega vía venta_id, por eso
+     * el filtro se resuelve con JOIN a ventas.
      */
     public VentaDetalle buscarPorId(
+            Long empresaId,
             Long detalleId) {
 
 
         String sql = """
             SELECT
-                id,
-                venta_id,
-                producto_id,
-                cantidad,
-                precio_venta,
-                descuento,
-                impuesto,
-                subtotal,
-                created_at
-            FROM venta_detalles
-            WHERE id = ?
+                vd.id,
+                vd.venta_id,
+                vd.producto_id,
+                vd.cantidad,
+                vd.precio_venta,
+                vd.descuento,
+                vd.impuesto,
+                vd.subtotal,
+                vd.created_at
+            FROM venta_detalles vd
+            JOIN ventas v
+              ON v.id = vd.venta_id
+            WHERE v.empresa_id = ?
+              AND vd.id = ?
             """;
 
 
@@ -58,6 +66,11 @@ public class VentaDetalleDAO {
 
             ps.setLong(
                     1,
+                    empresaId
+            );
+
+            ps.setLong(
+                    2,
                     detalleId
             );
 
@@ -97,26 +110,31 @@ public class VentaDetalleDAO {
 
 
     /**
-     * Lista detalles de una venta.
+     * Lista detalles de una venta, verificando que la
+     * venta sea de la empresa indicada.
      */
     public List<VentaDetalle> listarPorVenta(
+            Long empresaId,
             Long ventaId){
 
 
         String sql = """
             SELECT
-                id,
-                venta_id,
-                producto_id,
-                cantidad,
-                precio_venta,
-                descuento,
-                impuesto,
-                subtotal,
-                created_at
-            FROM venta_detalles
-            WHERE venta_id = ?
-            ORDER BY id
+                vd.id,
+                vd.venta_id,
+                vd.producto_id,
+                vd.cantidad,
+                vd.precio_venta,
+                vd.descuento,
+                vd.impuesto,
+                vd.subtotal,
+                vd.created_at
+            FROM venta_detalles vd
+            JOIN ventas v
+              ON v.id = vd.venta_id
+            WHERE v.empresa_id = ?
+              AND vd.venta_id = ?
+            ORDER BY vd.id
             """;
 
 
@@ -137,6 +155,11 @@ public class VentaDetalleDAO {
 
             ps.setLong(
                     1,
+                    empresaId
+            );
+
+            ps.setLong(
+                    2,
                     ventaId
             );
 
@@ -182,6 +205,11 @@ public class VentaDetalleDAO {
 
     /**
      * Crea detalle con conexión propia.
+     *
+     * No requiere empresaId aquí: la pertenencia a la
+     * empresa ya se valida antes de llamar a este método
+     * (VentaIntegralService construye el detalle a partir
+     * de una venta ya validada contra su empresa).
      *
      * Compatible con pruebas unitarias
      * y servicios independientes.

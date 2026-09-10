@@ -4,7 +4,6 @@ import com.codepos.config.ConexionBD;
 import com.codepos.model.Pago;
 
 import java.sql.*;
-import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,8 +15,8 @@ import java.util.List;
  *
  * Soporta:
  *
- * - Consultas individuales.
- * - Listados por venta.
+ * - Consultas individuales (filtradas por empresa vía JOIN a ventas).
+ * - Listados por venta (idem).
  * - Inserción independiente.
  * - Inserción dentro de transacciones.
  *
@@ -26,24 +25,33 @@ public class PagoDAO {
 
 
     /**
-     * Busca un pago por ID.
+     * Busca un pago por ID, verificando que la venta
+     * a la que pertenece sea de la empresa indicada.
+     *
+     * pagos no tiene empresa_id propio: la trazabilidad
+     * de empresa llega vía venta_id, por eso el filtro
+     * se resuelve con JOIN a ventas.
      */
     public Pago buscarPorId(
+            Long empresaId,
             Long pagoId) {
 
 
         String sql = """
             SELECT
-                id,
-                venta_id,
-                auth_user_id,
-                metodo,
-                monto,
-                referencia,
-                fecha,
-                created_at
-            FROM pagos
-            WHERE id = ?
+                p.id,
+                p.venta_id,
+                p.auth_user_id,
+                p.metodo,
+                p.monto,
+                p.referencia,
+                p.fecha,
+                p.created_at
+            FROM pagos p
+            JOIN ventas v
+              ON v.id = p.venta_id
+            WHERE v.empresa_id = ?
+              AND p.id = ?
             """;
 
 
@@ -58,6 +66,11 @@ public class PagoDAO {
 
             ps.setLong(
                     1,
+                    empresaId
+            );
+
+            ps.setLong(
+                    2,
                     pagoId
             );
 
@@ -97,25 +110,30 @@ public class PagoDAO {
 
 
     /**
-     * Lista pagos asociados a una venta.
+     * Lista pagos asociados a una venta, verificando
+     * que la venta sea de la empresa indicada.
      */
     public List<Pago> listarPorVenta(
+            Long empresaId,
             Long ventaId) {
 
 
         String sql = """
             SELECT
-                id,
-                venta_id,
-                auth_user_id,
-                metodo,
-                monto,
-                referencia,
-                fecha,
-                created_at
-            FROM pagos
-            WHERE venta_id = ?
-            ORDER BY id
+                p.id,
+                p.venta_id,
+                p.auth_user_id,
+                p.metodo,
+                p.monto,
+                p.referencia,
+                p.fecha,
+                p.created_at
+            FROM pagos p
+            JOIN ventas v
+              ON v.id = p.venta_id
+            WHERE v.empresa_id = ?
+              AND p.venta_id = ?
+            ORDER BY p.id
             """;
 
 
@@ -136,6 +154,11 @@ public class PagoDAO {
 
             ps.setLong(
                     1,
+                    empresaId
+            );
+
+            ps.setLong(
+                    2,
                     ventaId
             );
 
@@ -186,6 +209,11 @@ public class PagoDAO {
 
     /**
      * Crea un pago usando conexión propia.
+     *
+     * No requiere empresaId aquí: la pertenencia a la empresa
+     * ya se valida en PagoService.crear() antes de llamar a
+     * este método (verifica que la venta padre sea de la
+     * empresa indicada).
      *
      * Uso:
      *

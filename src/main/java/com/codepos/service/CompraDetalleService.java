@@ -26,11 +26,17 @@ public class CompraDetalleService {
 
 
     /**
-     * Busca detalle por ID.
+     * Busca detalle por ID, verificando que pertenezca
+     * a la empresa indicada.
      */
     public CompraDetalle consultar(
+            Long empresaId,
             Long detalleId) {
 
+
+        validarEmpresa(
+                empresaId
+        );
 
         validarId(
                 detalleId,
@@ -40,6 +46,7 @@ public class CompraDetalleService {
 
         CompraDetalle detalle =
                 detalleDAO.buscarPorId(
+                        empresaId,
                         detalleId
                 );
 
@@ -47,7 +54,7 @@ public class CompraDetalleService {
         if(detalle == null){
 
             throw new IllegalArgumentException(
-                    "No existe el detalle indicado"
+                    "No existe el detalle indicado para la empresa"
             );
         }
 
@@ -59,11 +66,17 @@ public class CompraDetalleService {
 
 
     /**
-     * Lista detalles de una compra.
+     * Lista detalles de una compra, verificando que
+     * la compra pertenezca a la empresa indicada.
      */
     public List<CompraDetalle> listarPorCompra(
+            Long empresaId,
             Long compraId) {
 
+
+        validarEmpresa(
+                empresaId
+        );
 
         validarId(
                 compraId,
@@ -72,6 +85,7 @@ public class CompraDetalleService {
 
 
         return detalleDAO.listarPorCompra(
+                empresaId,
                 compraId
         );
 

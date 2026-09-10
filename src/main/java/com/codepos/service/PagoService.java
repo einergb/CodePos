@@ -28,10 +28,18 @@ public class PagoService {
 
 
     /**
-     * Busca un pago por ID.
+     * Busca un pago por ID, verificando que la venta
+     * a la que pertenece sea de la empresa indicada.
      */
     public Pago buscarPorId(
+            Long empresaId,
             Long pagoId) {
+
+
+        validarId(
+                empresaId,
+                "La empresa es obligatoria"
+        );
 
 
         validarId(
@@ -40,9 +48,23 @@ public class PagoService {
         );
 
 
-        return pagoDAO.buscarPorId(
-                pagoId
-        );
+        Pago pago =
+                pagoDAO.buscarPorId(
+                        empresaId,
+                        pagoId
+                );
+
+
+        if(pago == null){
+
+            throw new IllegalArgumentException(
+                    "No existe el pago indicado para la empresa"
+            );
+
+        }
+
+
+        return pago;
 
     }
 
@@ -50,10 +72,18 @@ public class PagoService {
 
 
     /**
-     * Lista pagos de una venta.
+     * Lista pagos de una venta, verificando que la venta
+     * pertenezca a la empresa indicada.
      */
     public List<Pago> listarPorVenta(
+            Long empresaId,
             Long ventaId) {
+
+
+        validarId(
+                empresaId,
+                "La empresa es obligatoria"
+        );
 
 
         validarId(
@@ -63,6 +93,7 @@ public class PagoService {
 
 
         return pagoDAO.listarPorVenta(
+                empresaId,
                 ventaId
         );
 
@@ -72,10 +103,22 @@ public class PagoService {
 
 
     /**
-     * Crear pago.
+     * Crea un pago, verificando primero que la venta
+     * exista y pertenezca a la empresa indicada.
+     *
+     * Reemplaza el crear(Pago) anterior (sin empresaId),
+     * que dejaba el VentaDAO inyectado sin usar y delegaba
+     * la validación completa a VentaIntegralService.
      */
     public Long crear(
+            Long empresaId,
             Pago pago) {
+
+
+        validarId(
+                empresaId,
+                "La empresa es obligatoria"
+        );
 
 
         validarPago(
@@ -84,6 +127,7 @@ public class PagoService {
 
 
         validarVenta(
+                empresaId,
                 pago.getVentaId()
         );
 
@@ -166,22 +210,26 @@ public class PagoService {
 
 
 
+    /**
+     * Verifica que la venta exista y pertenezca a la
+     * empresa indicada, usando el VentaDAO ya inyectado.
+     */
     private void validarVenta(
+            Long empresaId,
             Long ventaId){
 
 
-        /*
-         * En esta versión el DAO
-         * requiere empresa.
-         *
-         * La validación completa
-         * quedará integrada en VentaIntegralService.
-         */
+        Venta venta =
+                ventaDAO.buscarPorId(
+                        empresaId,
+                        ventaId
+                );
 
-        if(ventaId<=0){
+
+        if(venta == null){
 
             throw new IllegalArgumentException(
-                    "Venta inválida"
+                    "La venta no existe para la empresa indicada"
             );
 
         }

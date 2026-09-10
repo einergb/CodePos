@@ -1,6 +1,8 @@
 package com.codepos.service;
 
+import com.codepos.dao.VentaDAO;
 import com.codepos.dao.VentaDetalleDAO;
+import com.codepos.model.Venta;
 import com.codepos.model.VentaDetalle;
 
 import java.math.BigDecimal;
@@ -22,22 +24,34 @@ public class VentaDetalleService {
 
     private final VentaDetalleDAO ventaDetalleDAO;
 
+    private final VentaDAO ventaDAO;
+
 
     public VentaDetalleService() {
 
         this.ventaDetalleDAO =
                 new VentaDetalleDAO();
 
+        this.ventaDAO =
+                new VentaDAO();
+
     }
 
 
 
     /**
-     * Busca detalle por ID.
+     * Busca detalle por ID, verificando que la venta
+     * a la que pertenece sea de la empresa indicada.
      */
     public VentaDetalle buscarPorId(
+            Long empresaId,
             Long detalleId) {
 
+
+        validarId(
+                empresaId,
+                "La empresa es obligatoria"
+        );
 
         validarId(
                 detalleId,
@@ -47,6 +61,7 @@ public class VentaDetalleService {
 
         VentaDetalle detalle =
                 ventaDetalleDAO.buscarPorId(
+                        empresaId,
                         detalleId
                 );
 
@@ -54,7 +69,7 @@ public class VentaDetalleService {
         if(detalle == null){
 
             throw new IllegalArgumentException(
-                    "No existe el detalle indicado"
+                    "No existe el detalle indicado para la empresa"
             );
 
         }
@@ -69,12 +84,18 @@ public class VentaDetalleService {
 
 
     /**
-     * Lista detalles asociados
-     * a una venta.
+     * Lista detalles asociados a una venta, verificando
+     * que la venta pertenezca a la empresa indicada.
      */
     public List<VentaDetalle> listarPorVenta(
+            Long empresaId,
             Long ventaId) {
 
+
+        validarId(
+                empresaId,
+                "La empresa es obligatoria"
+        );
 
         validarId(
                 ventaId,
@@ -83,6 +104,7 @@ public class VentaDetalleService {
 
 
         return ventaDetalleDAO.listarPorVenta(
+                empresaId,
                 ventaId
         );
 
@@ -93,10 +115,18 @@ public class VentaDetalleService {
 
 
     /**
-     * Crear detalle de venta.
+     * Crea detalle de venta, verificando primero que la
+     * venta exista y pertenezca a la empresa indicada.
      */
     public Long crear(
+            Long empresaId,
             VentaDetalle detalle) {
+
+
+        validarId(
+                empresaId,
+                "La empresa es obligatoria"
+        );
 
 
         validarDetalle(
@@ -104,9 +134,47 @@ public class VentaDetalleService {
         );
 
 
+        validarVenta(
+                empresaId,
+                detalle.getVentaId()
+        );
+
+
         return ventaDetalleDAO.crear(
                 detalle
         );
+
+    }
+
+
+
+
+
+
+
+    /**
+     * Verifica que la venta exista y pertenezca a la
+     * empresa indicada.
+     */
+    private void validarVenta(
+            Long empresaId,
+            Long ventaId) {
+
+
+        Venta venta =
+                ventaDAO.buscarPorId(
+                        empresaId,
+                        ventaId
+                );
+
+
+        if(venta == null){
+
+            throw new IllegalArgumentException(
+                    "La venta no existe para la empresa indicada"
+            );
+
+        }
 
     }
 

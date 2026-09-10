@@ -459,6 +459,21 @@ public class VentaDAO {
 
     /**
      * Marca venta como pagada.
+     *
+     * CORREGIDO: el UPDATE ahora exige "estado = 'REGISTRADA'"
+     * como precondición atómica, igual que ya hace
+     * InventarioDAO.descontarStock() con "cantidad >= ?".
+     *
+     * Esto evita dos escenarios antes posibles:
+     *
+     * - Marcar como PAGADA una venta que ya estuviera ANULADA
+     *   (o ya PAGADA por una llamada duplicada).
+     * - Una condición de carrera donde dos llamadas concurrentes
+     *   a finalizarVenta() sobre la misma venta "tuvieran éxito"
+     *   sin que el UPDATE en sí lo impidiera.
+     *
+     * Si la fila no cumple la condición, filas != 1 y se lanza
+     * IllegalStateException con un mensaje que distingue el caso.
      */
     public void marcarComoPagada(
             Connection connection,
@@ -473,6 +488,7 @@ public class VentaDAO {
                 updated_at=CURRENT_TIMESTAMP
             WHERE empresa_id=?
               AND id=?
+              AND estado='REGISTRADA'
             """;
 
 
@@ -505,7 +521,10 @@ public class VentaDAO {
 
 
                 throw new IllegalStateException(
-                        "No se pudo actualizar la venta a PAGADA"
+                        "No se pudo marcar la venta como PAGADA: "
+                                + "no existe, no pertenece a la "
+                                + "empresa indicada, o su estado "
+                                + "actual ya no es REGISTRADA"
                 );
 
             }
